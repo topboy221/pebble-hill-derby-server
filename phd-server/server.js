@@ -11,7 +11,8 @@ const { WebSocketServer } = require('ws');
 
 const PORT = +process.env.PORT || 8080;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-const GAME_FILE = path.join(__dirname, 'public', 'index.html');
+// the game page: public/pebble-hill-derby.html (an older public/index.html still works as a fallback)
+const GAME_FILE = ['pebble-hill-derby.html', 'index.html'].map(f => path.join(__dirname, 'public', f)).find(f => fs.existsSync(f)) || path.join(__dirname, 'public', 'pebble-hill-derby.html');
 const TRACK_IDS = ['pebble', 'city'];           // keep in sync with TRACKS in the game
 const MAX_PLAYERS = 12;
 const TIMES = {                                   // seconds
@@ -341,9 +342,9 @@ function handle(c, m) {
 /* ---------------- http + websocket ---------------- */
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
-  if (url === '/' || url === '/index.html') {
+  if (url === '/' || url === '/index.html' || url === '/pebble-hill-derby.html') {
     fs.readFile(GAME_FILE, (err, buf) => {
-      if (err) { res.writeHead(500); return res.end('Game file missing: put the game HTML at public/index.html'); }
+      if (err) { res.writeHead(500); return res.end('Game file missing: put the game HTML at public/pebble-hill-derby.html'); }
       let html = buf.toString('utf8');
       if (!/^\s*<!doctype/i.test(html))   // the game file is a page body: give it a proper document head (mobile viewport, full screen)
         html = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#8ec2e6"></head><body>' + html + '</body></html>';
