@@ -2352,7 +2352,7 @@ document.addEventListener('visibilitychange',()=>{
 function mySel(){return {design:sel.design,paint:sel.paint,rim:sel.rim,fin:sel.fin};}
 function netMsg(m){
   switch(m.t){
-    case 'auth':NET.name=m.name;NET.guest=m.guest;NET.err='';NET.retry=0;NET.reconnecting=false;if(m.sid){NET.sid=m.sid;try{sessionStorage.setItem('phd-sid',m.sid);}catch(e){}}if(m.token){NET.token=m.token;try{localStorage.setItem('phd-token',m.token);}catch(e){}}
+    case 'auth':NET.leaving=false;NET.name=m.name;NET.guest=m.guest;NET.err='';NET.retry=0;NET.reconnecting=false;if(m.sid){NET.sid=m.sid;try{sessionStorage.setItem('phd-sid',m.sid);}catch(e){}}if(m.token){NET.token=m.token;try{localStorage.setItem('phd-token',m.token);}catch(e){}}
       NET.view='hub';netSend({t:'car',car:mySel()});mpRender();break;
     case 'error':
       if(m.where==='rejoin'){NET.sid=null;try{sessionStorage.removeItem('phd-sid');}catch(e){}netSignIn();break;}
@@ -2377,11 +2377,15 @@ function netMsg(m){
       if(m.lobby.state==='lobby')NET.info='';
       if(first||(!NET.inRace&&!NET.results&&menuScreen!=='lobby'&&state==='menu'))showScreen('lobby');
       lobbyRender();break;}
-    case 'race':netRace(m);break;
-    case 'go':netGo(m);break;
-    case 'snap':netSnap(m);break;
-    case 'fin':netFin(m);break;
-    case 'gone':netGone(m.id);break;
+    case 'race':case 'go':case 'snap':case 'fin':case 'gone':case 'results':case 'votes':case 'voted':
+      // race traffic only counts while we're in a lobby: a message already on its way when you left is ignored
+      if(!NET.lobby||NET.leaving)break;
+      if(m.t==='race')netRace(m);else if(m.t==='go')netGo(m);else if(m.t==='snap')netSnap(m);else if(m.t==='fin')netFin(m);else if(m.t==='gone')netGone(m.id);else netResults(m);
+      break;
+  }
+}
+function netResults(m){
+  switch(m.t){
     case 'results':NET.results=m.rows;NET.vote=m.vote;NET.myVote=null;NET.voted=null;NET.inRace=false;NET.voteEnd=performance.now()+m.vote.secs*1000;
       if(player&&!player.finished){player.finished=true;player.finishTime=0;}
       if(state==='race'||state==='countdown'){resultsShown=true;netShowResults();}
@@ -2435,7 +2439,7 @@ function mpRender(){
     return;
   }
   if(v==='create'){P.appendChild(mpForm('Private server',[['sname','Server name','text',NET.name+'\'s server'],['spass','Password','password','friends need this to join']],'Create',
-    (I)=>netSend({t:'create',name:I.sname.value.trim(),pass:I.spass.value,car:mySel()}),'hub'));$('mp_spass').autocomplete='new-password';return;}
+    (I)=>{NET.leaving=false;return netSend({t:'create',name:I.sname.value.trim(),pass:I.spass.value,car:mySel()});},'hub'));$('mp_spass').autocomplete='new-password';return;}
   if(v==='browse'){
     const c=document.createElement('div');c.className='card mpform';const h=document.createElement('h3');h.className='disp';h.textContent='Private servers';c.appendChild(h);
     const L=document.createElement('div');L.className='slist';
@@ -2446,12 +2450,12 @@ function mpRender(){
     if(NET.joinId){const lab=document.createElement('label');lab.textContent='Password for '+((NET.list.find(x=>x.id===NET.joinId)||{}).name||'server');const i=document.createElement('input');i.type='password';i.id='mp_jpass';i.dataset.submit='mpSubmit';i.autocomplete='off';lab.appendChild(i);c.appendChild(lab);setTimeout(()=>{if(!isTouch)i.focus();},30);}
     const err=document.createElement('p');err.className='mperr';err.textContent=NET.err;c.appendChild(err);
     const row=document.createElement('div');row.className='mpsmall';
-    if(NET.joinId){const j=document.createElement('button');j.className='btn go';j.id='mpSubmit';j.textContent='Join';j.onclick=()=>{NET.err='';netSend({t:'join',id:NET.joinId,pass:$('mp_jpass').value,car:mySel()});};row.appendChild(j);}
+    if(NET.joinId){const j=document.createElement('button');j.className='btn go';j.id='mpSubmit';j.textContent='Join';j.onclick=()=>{NET.err='';NET.leaving=false;netSend({t:'join',id:NET.joinId,pass:$('mp_jpass').value,car:mySel()});};row.appendChild(j);}
     const r=document.createElement('button');r.className='btn';r.textContent='Refresh';r.onclick=()=>netSend({t:'list'});row.appendChild(r);
     const bk=document.createElement('button');bk.className='btn';bk.textContent='Back';bk.onclick=()=>{NET.view='hub';NET.joinId=null;NET.err='';mpRender();};row.appendChild(bk);
     c.appendChild(row);P.appendChild(c);return;
   }
-  P.appendChild(mpBtn('Quick join','First open lobby, race starts when it fills or the timer runs out','go',()=>{NET.err='';netSend({t:'quick',car:mySel()});}));
+  P.appendChild(mpBtn('Quick join','First open lobby, race starts when it fills or the timer runs out','go',()=>{NET.err='';NET.leaving=false;netSend({t:'quick',car:mySel()});}));
   P.appendChild(mpBtn('Create private server','Password protected, for you and your friends','',()=>{NET.view='create';NET.err='';mpRender();}));
   P.appendChild(mpBtn('Join private server','Pick a server and enter its password','',()=>{NET.view='browse';NET.joinId=null;NET.err='';netSend({t:'list'});mpRender();}));
   const row=document.createElement('div');row.className='mpsmall';
