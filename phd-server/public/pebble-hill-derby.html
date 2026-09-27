@@ -2348,7 +2348,11 @@ function netMsg(m){
     case 'kicked':NET.err=m.msg;NET.name=null;netDropRace(m.msg);NET.view='auth';mpRender();break;
     case 'loggedout':NET.name=null;if(NET.view!=='login'&&NET.view!=='register')NET.view='auth';mpRender();break;
     case 'lobbies':NET.list=m.list;mpRender();break;
-    case 'pong':{const s=performance.now()-m.c;if(s>=0&&s<5000)NET.rtt=NET.rtt?lerp(NET.rtt,s,0.3):s;break;}
+    case 'pong':{const now=performance.now(),s=now-m.c;if(s>=0&&s<5000){NET.rtt=NET.rtt?lerp(NET.rtt,s,0.3):s;
+        if(m.s){ // server clock: keep the recent samples and trust the one with the fastest round trip
+          (NET.sync=NET.sync||[]).push({rtt:s,off:m.s+s/2-now});if(NET.sync.length>10)NET.sync.shift();
+          NET.off=NET.sync.reduce((a,b)=>b.rtt<a.rtt?b:a).off;}}
+      break;}
     case 'left':NET.lobby=null;NET.leaving=false;break;
     case 'info':NET.info=m.msg;lobbyRender();break;
     case 'lobby':{
@@ -2512,8 +2516,15 @@ function netRace(m){
   ensureTrack(m.track,()=>{
     setupOnlineCars(m.roster);
     $('loadMsg').textContent='Waiting for the other racers…';$('loading').hidden=false;
+    netPrewarm();
     state='netwait';netSend({t:'loaded'});
   },' · online race');
+}
+function netPrewarm(){
+  try{
+    cars.forEach(c=>{const g=GRID[c.slot]||GRID[0];placeOnTrack(c,g[0],g[1],0);updateCarVisual(c,0);});
+    updateCamera(0,true);setEnvMaps(NIGHT?ENVN:ENV);renderer.compile(scene,camera);renderer.render(scene,camera);
+  }catch(e){console.error(e);}
 }
 function setupOnlineCars(roster){
   for(const c of cars){scene.remove(c.mesh.root);scene.remove(c.mesh.shadow);}
@@ -2529,7 +2540,10 @@ function setupOnlineCars(roster){
 function netGo(m){
   if(!player)return;
   $('loading').hidden=true;NET.inRace=true;NET.sendT=0;
+  const now=performance.now(),off=NET.off!=null?NET.off:(m.now?m.now+(NET.rtt||100)/2-now:null);
+  NET.startLocal=m.startAt&&off!=null?m.startAt-off:now+m.countdown*1000;   // the shared GO moment, on this device's clock
   startRace();
+  countT=(NET.startLocal-now)/1000;lastCount=Math.ceil(countT)+1;
   raceLabel='Online · '+TRACK.name;flash(TRACK.name,'Online race · '+cars.length+' racers');
 }
 const r2=v=>Math.round(v*100)/100;
@@ -2550,7 +2564,9 @@ function netSnap(m){
 // so we predict where they are *now* by carrying them forward along their curve, then blend any correction in smoothly
 function netPredict(net,now){
   const q=net.s,myHalf=(NET.rtt||100)/2;
-  const lead=clamp(((q[13]||100)/2+myHalf+40+(now-net.at))/1000,0,0.45),acc=net.acc||0;
+  // with the clocks synced, age = our race time now minus the race time stamped on the update (no guessing about network delay)
+  const age=NET.startLocal&&NET.off!=null?(now-NET.startLocal)/1000-q[12]:((q[13]||100)/2+myHalf+40+(now-net.at))/1000;
+  const lead=clamp(age+0.016,0,0.5),acc=net.acc||0;
   let x=q[0],z=q[2],vx=q[4],vz=q[6],psi=q[3];const r=q[11],n=3,h=lead/n;
   for(let k=0;k<n;k++){const a=r*h,ca=Math.cos(a),sa=Math.sin(a),sp=Math.hypot(vx,vz),g=sp>1?Math.max(0,sp+acc*h)/sp:1,nx=(vx*ca+vz*sa)*g,nz=(vz*ca-vx*sa)*g;x+=(vx+nx)*h/2;z+=(vz+nz)*h/2;vx=nx;vz=nz;psi+=a;}
   const grounded=!!(q[9]&1);
@@ -2633,7 +2649,7 @@ function voteButtons(box){
 let last=performance.now(),crowdT=0,dbgNoLoop=false;
 function frame(now){
   requestAnimationFrame(frame);
-  const dt=Math.min(0.05,(now-last)/1000);last=now;
+  const dt=Math.min(NET.inRace?0.1:0.05,(now-last)/1000);last=now;
   if(state==='menu'){
     if(menuScreen==='garage'){setEnvMaps(ENV);updateGarage(dt);renderer.render(gScene,gCam);}   // other menus are full-screen 2D: nothing to render
   }else if(worldBuilt){
@@ -2646,12 +2662,13 @@ function frame(now){
 }
 function tick(dt){
   if(state==='countdown'){
-    countT-=dt;const n=Math.ceil(countT);
+    if(NET.inRace&&NET.startLocal)countT=(NET.startLocal-performance.now())/1000;else countT-=dt;
+    const n=Math.ceil(countT);
     if(n!==lastCount&&n<=3&&n>=1){flash(String(n),n===1?(isTouch?'Get ready to tap PUSH':'Get ready to tap ↑'):raceLabel);blip(440,0.15,'square',0.15);}
     lastCount=n;
-    if(countT<=0){state='race';raceT=0;for(const c of cars)c.vmax=0;flash('GO!',isTouch?'Tap PUSH fast!':'Tap ↑ fast to push!','red');blip(880,0.35,'square',0.2);$('pushBtn').classList.add('live');}
+    if(countT<=0){state='race';raceT=NET.inRace&&NET.startLocal?(performance.now()-NET.startLocal)/1000:0;for(const c of cars)c.vmax=0;flash('GO!',isTouch?'Tap PUSH fast!':'Tap ↑ fast to push!','red');blip(880,0.35,'square',0.2);$('pushBtn').classList.add('live');}
   }else{
-    raceT+=dt;
+    if(NET.inRace&&NET.startLocal)raceT=Math.max(raceT,(performance.now()-NET.startLocal)/1000);else raceT+=dt;
     if(raceT>2.6)$('pushBtn').hidden=true;
     gateOpen=Math.min(1,gateOpen+dt*2.2);world.gateArm.rotation.z=-gateOpen*Math.PI*0.48;
     if(!player.finished){
@@ -2716,7 +2733,7 @@ function init(){
   $('loading').hidden=true;onResize();
   showHome();
   requestAnimationFrame(frame);
-  window.__phd={cars,get player(){return player},get audio(){return snd},get state(){return state},get LEN(){return LEN},get minRad(){return minRad},get DROP(){return DROP},get FINISH_S(){return FINISH_S},get CORNERS(){return CORNERS},get TRACK(){return TRACK},get JUMPS(){return JUMPS},get TUNNELS(){return TUNNELS},get RH(){return RH},startRace,startQuick,input,get scene(){return scene},garageSpin:(a)=>{garage.tt.rotation.y=a;garage.userT=99;},get collCount(){return collCount},placeOnTrack,get KS(){return KS},get S(){return S},get DSA(){return DSA},sim:(sec)=>{for(let t=0;t<sec;t+=1/60)tick(1/60);},shot:(p,l)=>{camera.position.set(p[0],p[1],p[2]);camera.lookAt(l[0],l[1],l[2]);camera.updateMatrixWorld();renderer.render(scene,camera);return renderer.domElement.toDataURL('image/png');},get camera(){return camera},get NET(){return NET},set noLoop(v){dbgNoLoop=v},get cars2(){return cars},get world(){return world},get PX(){return PX},get PZ(){return PZ},get RHB(){return RHB},get NX(){return NX},get NZ(){return NZ}};
+  window.__phd={cars,get player(){return player},get audio(){return snd},get state(){return state},get LEN(){return LEN},get minRad(){return minRad},get DROP(){return DROP},get FINISH_S(){return FINISH_S},get CORNERS(){return CORNERS},get TRACK(){return TRACK},get JUMPS(){return JUMPS},get TUNNELS(){return TUNNELS},get RH(){return RH},startRace,startQuick,input,get scene(){return scene},garageSpin:(a)=>{garage.tt.rotation.y=a;garage.userT=99;},get collCount(){return collCount},placeOnTrack,get KS(){return KS},get S(){return S},get DSA(){return DSA},sim:(sec)=>{for(let t=0;t<sec;t+=1/60)tick(1/60);},shot:(p,l)=>{camera.position.set(p[0],p[1],p[2]);camera.lookAt(l[0],l[1],l[2]);camera.updateMatrixWorld();renderer.render(scene,camera);return renderer.domElement.toDataURL('image/png');},get camera(){return camera},get NET(){return NET},get countT(){return countT},get raceT(){return raceT},set noLoop(v){dbgNoLoop=v},get cars2(){return cars},get world(){return world},get PX(){return PX},get PZ(){return PZ},get RHB(){return RHB},get NX(){return NX},get NZ(){return NZ}};
 }
 const fontsReady=(document.fonts&&document.fonts.load)?Promise.all([document.fonts.load('64px "Rammetto One"'),document.fonts.load('800 20px "M PLUS Rounded 1c"')]).catch(()=>{}):Promise.resolve();
 Promise.race([fontsReady,new Promise(r=>setTimeout(r,2500))]).then(()=>setTimeout(init,30));
