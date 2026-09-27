@@ -25,7 +25,7 @@ const TIMES = {                                   // seconds
   afterVote: 3,
 };
 if (process.env.PHD_FAST) Object.assign(TIMES, { publicWait: 3, publicFull: 2, vote: 30, afterVote: 2, afterFirst: 15 });   // for automated tests
-const SNAP_MS = 66;                               // ~15 position updates a second
+const SNAP_MS = 50;                               // 20 position updates a second
 
 /* ---------------- storage (JSON files; swap for a database when you outgrow it) ---------------- */
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -104,8 +104,10 @@ function lobbyInfo(L) {
     max: MAX_PLAYERS,
   };
 }
-function send(c, msg) { if (c.ws.readyState === 1) c.ws.send(JSON.stringify(msg)); }
-function broadcast(L, msg, except) { const s = JSON.stringify(msg); for (const c of L.players) if (c !== except && c.ws.readyState === 1) c.ws.send(s); }
+const LAG = +process.env.PHD_LAG || 0;            // test only: fake network delay (ms each way)
+const wsend = (ws, str) => { if (LAG) setTimeout(() => { if (ws.readyState === 1) ws.send(str); }, LAG); else ws.send(str); };
+function send(c, msg) { if (c.ws.readyState === 1) wsend(c.ws, JSON.stringify(msg)); }
+function broadcast(L, msg, except) { const s = JSON.stringify(msg); for (const c of L.players) if (c !== except && c.ws.readyState === 1) wsend(c.ws, s); }
 function pushLobby(L) { const info = lobbyInfo(L); for (const c of L.players) send(c, { t: 'lobby', lobby: info, you: c.id }); }
 function setTimer(L, secs, fn) { clearTimeout(L.timer); L.timerEnds = Date.now() + secs * 1000; L.timer = setTimeout(() => { L.timer = null; fn(); }, secs * 1000); }
 function clearTimer(L) { clearTimeout(L.timer); L.timer = null; }
@@ -184,11 +186,11 @@ function snap(L) {
   if (!L.race || !L.race.states.size) return;
   const cars = []; for (const [id, s] of L.race.states) cars.push([id, ...s]);
   const msg = JSON.stringify({ t: 'snap', cars });
-  for (const c of L.players) if (L.race.racers.has(c.id) && c.ws.readyState === 1) c.ws.send(msg);
+  for (const c of L.players) if (L.race.racers.has(c.id) && c.ws.readyState === 1) wsend(c.ws, msg);
 }
 function onState(c, a) {
   const L = c.lobby; if (!L || L.state !== 'race' || !L.race.racers.has(c.id)) return;
-  if (!Array.isArray(a) || a.length !== 13 || !a.every(v => typeof v === 'number' && isFinite(v))) return;
+  if (!Array.isArray(a) || (a.length !== 13 && a.length !== 14) || !a.every(v => typeof v === 'number' && isFinite(v))) return;
   const r = L.race.racers.get(c.id); if (r.fin) { L.race.states.set(c.id, a); return; }
   r.lastS = a[7];
   L.race.states.set(c.id, a);
@@ -270,6 +272,7 @@ function authed(c, name, guest, token) {
 function handle(c, m) {
   switch (m.t) {
     case 'hello': return send(c, { t: 'welcome', tracks: TRACK_IDS, max: MAX_PLAYERS });
+    case 'ping': return send(c, { t: 'pong', c: +m.c || 0 });              // lets each player measure its round-trip time
     case 'guest': if (c.lobby) return; return authed(c, guestName(), true);
     case 'register': {
       if (limited(c.ip)) return send(c, { t: 'error', where: 'auth', msg: 'Too many tries. Wait a few minutes.' });
@@ -348,7 +351,7 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
-  if (url === '/health') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ ok: true, online: online.size, lobbies: lobbies.size })); }
+  if (url === '/health') { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); return res.end(JSON.stringify({ ok: true, online: online.size, lobbies: lobbies.size })); }
   res.writeHead(404); res.end('Not found');
 });
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
@@ -361,7 +364,7 @@ wss.on('connection', (ws, req) => {
     const now = Date.now(); if (now - c.since > 1000) { c.since = now; c.msgs = 0; }
     if (++c.msgs > 60) return;                                    // flood guard
     let m; try { m = JSON.parse(data); } catch (e) { return; }
-    if (m && typeof m.t === 'string') { try { handle(c, m); } catch (e) { console.error(e); } }
+    if (m && typeof m.t === 'string') { const run = () => { try { handle(c, m); } catch (e) { console.error(e); } }; if (LAG) setTimeout(run, LAG); else run(); }
   });
   ws.on('close', () => { leaveLobby(c); if (c.name && online.get(c.name.toLowerCase()) === c) online.delete(c.name.toLowerCase()); });
 });

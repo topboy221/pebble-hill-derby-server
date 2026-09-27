@@ -1692,7 +1692,7 @@ function resetRace(){
   finishCount=0;raceT=0;countT=3.6;afterFinishT=0;resultsShown=false;finalShown=false;
   cars.forEach((c,k)=>{
     Object.assign(c,{finished:false,finishTime:0,place:0,pushes:0,pushTimer:0.3+Math.random()*0.2,driftCharge:0,boostT:0,airT:0,stuckT:0,brake:0,handbrake:false,pitch:0,roll:0,bounce:0,bounceV:0,assist:0,ax:0,fyf:0,fyr:0,draft:0,tow:null,towCD:2+Math.random()*4,passT:0,lane:c.baseLane});
-    const slot=c.slot!=null?c.slot:c===player?PLAYER_SLOT:(k<PLAYER_SLOT?k:k+1);placeOnTrack(c,GRID[slot][0],GRID[slot][1],0);c.buf&&(c.buf.length=0);
+    const slot=c.slot!=null?c.slot:c===player?PLAYER_SLOT:(k<PLAYER_SLOT?k:k+1);placeOnTrack(c,GRID[slot][0],GRID[slot][1],0);if(c.remote){c.net=null;c.oldNet=null;c.ex=undefined;}
   });
   world.gateArm.rotation.z=0;gateOpen=0;
   state='countdown';lastCount=4;
@@ -2289,11 +2289,14 @@ window.addEventListener('resize',onResize);
 const NET={ws:null,url:'',conn:'off',name:null,guest:true,token:null,view:'auth',err:'',info:'',lobby:null,you:null,
   online:false,inRace:false,results:null,vote:null,myVote:null,voted:null,sendT:0,cdEnd:0,list:[],joinId:null,wantView:null,retry:0};
 try{NET.token=localStorage.getItem('phd-token')||null;}catch(e){}
+const DEFAULT_SERVER='wss://pebble-hill-derby-server.onrender.com/ws';   // the public Pebble Hill Derby server
 function defaultServer(){
   try{const s=localStorage.getItem('phd-server');if(s)return s;}catch(e){}
-  if(/^https?:$/.test(location.protocol)&&location.host)return (location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws';
-  return '';
+  // opened from a local test server (your PC / LAN)? use that one, otherwise the public server
+  if(/^https?:$/.test(location.protocol)&&/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname))return (location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws';
+  return DEFAULT_SERVER;
 }
+const wake=url=>{try{fetch(url.replace(/^ws/,'http').replace(/\/ws$/,'/health'),{mode:'no-cors',cache:'no-store'}).catch(()=>{});}catch(e){}};
 function netSend(m){if(NET.ws&&NET.ws.readyState===1)NET.ws.send(JSON.stringify(m));}
 function netConnect(url){
   url=(url||NET.url||defaultServer()).trim();
@@ -2303,17 +2306,25 @@ function netConnect(url){
   if(NET.ws){try{NET.ws.onclose=null;NET.ws.close();}catch(e){}NET.ws=null;}
   if(!url){NET.conn='off';NET.err='';mpRender();return;}
   NET.conn='connecting';mpRender();
+  if(!NET.tries)wake(url);
   let ws;try{ws=new WebSocket(url);}catch(e){NET.conn='off';NET.err='That server address doesn\'t look right.';mpRender();return;}
   NET.ws=ws;
-  ws.onopen=()=>{NET.conn='on';NET.retry=0;try{localStorage.setItem('phd-server',url);}catch(e){}netSend({t:'hello'});
+  ws.onopen=()=>{NET.conn='on';NET.retry=0;NET.tries=0;netPing();try{localStorage.setItem('phd-server',url);}catch(e){}netSend({t:'hello'});
     if(NET.name&&NET.guest)netSend({t:'guest'});else if(NET.token)netSend({t:'resume',token:NET.token});else{NET.view='auth';mpRender();}};
   ws.onmessage=e=>{let m;try{m=JSON.parse(e.data);}catch(_){return;}netMsg(m);};
   ws.onclose=()=>{if(NET.ws!==ws)return;NET.ws=null;const was=NET.conn;NET.conn='off';
     if(NET.inRace||NET.results||NET.lobby){netDropRace('Connection to the server lost.');}
-    NET.lobby=null;if(was==='connecting')NET.err='Can\'t reach the multiplayer server.';
+    NET.lobby=null;
+    if(was==='connecting'){
+      if(url!==DEFAULT_SERVER&&!NET.tries){try{localStorage.removeItem('phd-server');}catch(e){}NET.tries=1;setTimeout(()=>netConnect(DEFAULT_SERVER),300);NET.conn='connecting';mpRender();return;}
+      if((NET.tries||0)<14&&menuScreen==='multi'){NET.tries=(NET.tries||0)+1;NET.conn='connecting';NET.waking=true;mpRender();setTimeout(()=>{if(!NET.ws&&menuScreen==='multi')netConnect(url);},4500);return;}
+      NET.tries=0;NET.waking=false;NET.err='Can\'t reach the multiplayer server.';
+    }
     mpRender();
     if(was==='on'&&NET.retry<3&&menuScreen==='multi'){NET.retry++;setTimeout(()=>{if(!NET.ws&&menuScreen==='multi')netConnect();},1500*NET.retry);}};
 }
+function netPing(){netSend({t:'ping',c:Math.round(performance.now())});}
+setInterval(()=>{if(NET.conn==='on')netPing();},2000);
 function mySel(){return {design:sel.design,paint:sel.paint,rim:sel.rim,fin:sel.fin};}
 function netMsg(m){
   switch(m.t){
@@ -2326,6 +2337,7 @@ function netMsg(m){
     case 'kicked':NET.err=m.msg;NET.name=null;netDropRace(m.msg);NET.view='auth';mpRender();break;
     case 'loggedout':NET.name=null;if(NET.view!=='login'&&NET.view!=='register')NET.view='auth';mpRender();break;
     case 'lobbies':NET.list=m.list;mpRender();break;
+    case 'pong':{const s=performance.now()-m.c;if(s>=0&&s<5000)NET.rtt=NET.rtt?lerp(NET.rtt,s,0.3):s;break;}
     case 'left':NET.lobby=null;NET.leaving=false;break;
     case 'info':NET.info=m.msg;lobbyRender();break;
     case 'lobby':{
@@ -2370,14 +2382,15 @@ function mpRender(){
   const P=$('mpPanel');if(!P)return;P.innerHTML='';
   const st=$('mpStatus');
   if(NET.conn!=='on'){
-    st.textContent=NET.conn==='connecting'?'Connecting to the server…':(NET.err||'Not connected.');
+    if(NET.conn==='connecting'&&!P.children.length){const c=document.createElement('div');c.className='card mpform';const h=document.createElement('h3');h.className='disp';h.textContent=NET.waking?'Waking up…':'Connecting…';c.appendChild(h);P.appendChild(c);}
+    st.textContent=NET.conn==='connecting'?(NET.waking?'Waking up the server… free servers nap when nobody is racing, this can take up to a minute.':'Connecting to the server…'):(NET.err||'Not connected.');
     if(NET.conn==='off'){$('mpSrvBox').open=true;
       const c=document.createElement('div');c.className='card mpform';const h=document.createElement('h3');h.className='disp';h.textContent='Offline';c.appendChild(h);
       const p=document.createElement('p');p.className='muted';p.textContent=NET.url?'Can\'t reach '+NET.url.replace(/^wss?:\/\//,'').replace(/\/ws$/,'')+'. Check the server address under "Server" and connect again.':'Enter the address of your Pebble Hill Derby server under "Server" to race online.';c.appendChild(p);
       const b=document.createElement('button');b.className='btn go';b.textContent='Try again';b.onclick=()=>{NET.err='';netConnect($('mpServer').value);};c.appendChild(b);P.appendChild(c);}
     return;
   }
-  $('mpSrvBox').open=false;
+  $('mpSrvBox').open=false;NET.waking=false;
   st.textContent=NET.name?('Racing as '+NET.name+(NET.guest?' (guest)':'')+' · up to 12 per race'):'Up to 12 racers per race. Play as a guest or use your account.';
   const v=NET.view;
   if(!NET.name||v==='auth'){
@@ -2487,7 +2500,7 @@ function setupOnlineCars(roster){
   for(const r of roster){
     const me=r.id===NET.you,cs=me?mySel():r.car||{};
     const d=DESIGNS[cs.design]?cs.design:0,paint=/^#[0-9a-f]{6}$/i.test(cs.paint)?cs.paint:PAINTS[0];
-    const c=newCar({name:me?'You':r.name,num:r.slot+1,design:d,dsg:DESIGNS[d],paint,rim:RIMS[cs.rim]?cs.rim:0,fin:RIM_FINS[cs.fin]?cs.fin:0,ai:false,remote:!me,netId:r.id,slot:r.slot,buf:[]});
+    const c=newCar({net:null,ex:undefined,name:me?'You':r.name,num:r.slot+1,design:d,dsg:DESIGNS[d],paint,rim:RIMS[cs.rim]?cs.rim:0,fin:RIM_FINS[cs.fin]?cs.fin:0,ai:false,remote:!me,netId:r.id,slot:r.slot,buf:[]});
     cars.push(c);if(me)player=c;
   }
   for(const c of cars){c.mesh=buildCar(c.design,c.paint,c.num,c.rim,c.fin);c.box=carGeos(c.design).box;scene.add(c.mesh.root);scene.add(c.mesh.shadow);addNightLights(c);}
@@ -2500,29 +2513,45 @@ function netGo(m){
 }
 const r2=v=>Math.round(v*100)/100;
 function netTick(dt){
-  NET.sendT-=dt;if(NET.sendT>0||!player)return;NET.sendT=1/15;
+  NET.sendT-=dt;if(NET.sendT>0||!player)return;NET.sendT=1/20;
   const c=player,f=(c.grounded?1:0)|(c.onRoad?2:0)|(c.handbrake?4:0)|(c.brake>0?8:0)|(c.boostT>0?16:0)|(c.finished?32:0);
-  netSend({t:'st',s:[r2(c.x),r2(c.y),r2(c.z),Math.round(c.psi*1000)/1000,r2(c.vx),r2(c.vy),r2(c.vz),r2(c.s),Math.round(c.delta*1000)/1000,f,r2(c.slip||0),r2(c.r),r2(raceT)]});
+  netSend({t:'st',s:[r2(c.x),r2(c.y),r2(c.z),Math.round(c.psi*1000)/1000,r2(c.vx),r2(c.vy),r2(c.vz),r2(c.s),Math.round(c.delta*1000)/1000,f,r2(c.slip||0),r2(c.r),r2(raceT),Math.round(NET.rtt||100)]});
 }
 function netSnap(m){
   if(!NET.inRace&&!NET.results)return;const now=performance.now();
-  for(const a of m.cars){const c=cars.find(k=>k.netId===a[0]);if(!c||!c.remote)continue;
-    c.buf.push({t:now,s:a.slice(1)});if(c.buf.length>30)c.buf.shift();}
+  for(const a of m.cars){const c=cars.find(k=>k.netId===a[0]);if(!c||!c.remote)continue;const q=a.slice(1),p=c.net;
+    if(p&&p.s[12]===q[12])continue;                                   // same update again (server re-sends the latest)
+    // speed-up/slow-down along the track, measured between the car's own updates (their race clock)
+    let acc=p?p.acc:0;if(p&&q[12]>p.s[12]){const dtq=q[12]-p.s[12];if(dtq<0.5){const sp=Math.hypot(q[4],q[6]),so=Math.hypot(p.s[4],p.s[6]);acc=lerp(acc,clamp((sp-so)/dtq,-12,8),0.35);}}
+    c.net={s:q,at:now,acc};c.netNew=true;}
 }
-// remote cars are drawn ~110 ms in the past, smoothly between the two updates around that moment
-function netRemotes(now){
-  const rt=now-110;
+// remote cars: their last update is already old by the time it reaches us (their half of the round trip + ours + server hold),
+// so we predict where they are *now* by carrying them forward along their curve, then blend any correction in smoothly
+function netPredict(net,now){
+  const q=net.s,myHalf=(NET.rtt||100)/2;
+  const lead=clamp(((q[13]||100)/2+myHalf+40+(now-net.at))/1000,0,0.45),acc=net.acc||0;
+  let x=q[0],z=q[2],vx=q[4],vz=q[6],psi=q[3];const r=q[11],n=3,h=lead/n;
+  for(let k=0;k<n;k++){const a=r*h,ca=Math.cos(a),sa=Math.sin(a),sp=Math.hypot(vx,vz),g=sp>1?Math.max(0,sp+acc*h)/sp:1,nx=(vx*ca+vz*sa)*g,nz=(vz*ca-vx*sa)*g;x+=(vx+nx)*h/2;z+=(vz+nz)*h/2;vx=nx;vz=nz;psi+=a;}
+  const grounded=!!(q[9]&1);
+  return {x,z,psi,vx,vz,grounded,y:grounded?q[1]:q[1]+q[5]*lead-4.9*lead*lead};
+}
+function netRemotes(now,dt){
   for(const c of cars){
-    if(!c.remote||!c.buf.length)continue;
-    const b=c.buf;while(b.length>2&&b[1].t<=rt)b.shift();
-    const A=b[0],B=b[1]||b[0];let u=B.t>A.t?(rt-A.t)/(B.t-A.t):1;
-    const a=A.s,q=B.s;
-    if(u>1){const ex=Math.min(0.25,(rt-B.t)/1000);c.x=q[0]+q[4]*ex;c.y=q[1];c.z=q[2]+q[6]*ex;c.psi=q[3]+q[11]*ex;}
-    else{u=Math.max(0,u);c.x=lerp(a[0],q[0],u);c.y=lerp(a[1],q[1],u);c.z=lerp(a[2],q[2],u);c.psi=a[3]+wrapA(q[3]-a[3])*u;}
-    c.vx=lerp(a[4],q[4],Math.min(1,u));c.vy=lerp(a[5],q[5],Math.min(1,u));c.vz=lerp(a[6],q[6],Math.min(1,u));c.delta=q[8];
-    const f=q[9];c.grounded=!!(f&1);c.onRoad=!!(f&2);c.handbrake=!!(f&4);c.brake=f&8?1:0;c.boostT=f&16?0.3:0;
-    c.slip=q[10];c.r=q[11];c.airT=c.grounded?0:0.5;
-    locate(c);c.latA=c.r*Math.hypot(c.vx,c.vz);
+    if(!c.remote||!c.net)continue;
+    const q=c.net.s,f=q[9],P=netPredict(c.net,now);
+    if(c.netNew||c.ex===undefined){ // new update: keep the car exactly where it is on screen right now and fade the difference out
+      if(c.ex===undefined||!c.oldNet){c.ex=0;c.ez=0;c.ey=0;c.ep=0;}
+      else{const O=netPredict(c.oldNet,now);c.ex+=O.x-P.x;c.ez+=O.z-P.z;c.ey+=O.y-P.y;c.ep=wrapA(c.ep+O.psi-P.psi);
+        if(Math.hypot(c.ex,c.ez)>10){c.ex=c.ez=c.ey=c.ep=0;}}               // teleported (respawn): just jump
+      c.netNew=false;c.oldNet=c.net;
+    }
+    const k=Math.exp(-dt*9);c.ex*=k;c.ez*=k;c.ey*=k;c.ep*=k;
+    c.x=P.x+c.ex;c.z=P.z+c.ez;c.psi=P.psi+c.ep;c.vx=P.vx;c.vz=P.vz;c.vy=q[5];c.delta=q[8];
+    c.grounded=P.grounded;c.onRoad=!!(f&2);c.handbrake=!!(f&4);c.brake=f&8?1:0;c.boostT=f&16?0.3:0;
+    c.slip=q[10];c.r=q[11];c.airT=P.grounded?0:0.5;
+    locate(c);
+    c.y=P.grounded?groundOf(c).h:P.y+c.ey;
+    c.latA=c.r*Math.hypot(c.vx,c.vz);
   }
 }
 function netFin(m){
@@ -2580,17 +2609,17 @@ function voteButtons(box){
 }
 
 /* ================= MAIN LOOP ================= */
-let last=performance.now(),crowdT=0;
+let last=performance.now(),crowdT=0,dbgNoLoop=false;
 function frame(now){
   requestAnimationFrame(frame);
   const dt=Math.min(0.05,(now-last)/1000);last=now;
   if(state==='menu'){
     if(menuScreen==='garage'){setEnvMaps(ENV);updateGarage(dt);renderer.render(gScene,gCam);}   // other menus are full-screen 2D: nothing to render
   }else if(worldBuilt){
-    if((state==='countdown'||state==='race')&&!paused)tick(dt);
+    if((state==='countdown'||state==='race')&&!paused&&!dbgNoLoop)tick(dt);
     else if(player)updateCamera(0.0001,false);
     ambient(dt,now);setEnvMaps(NIGHT?ENVN:ENV);
-    renderer.render(scene,camera);
+    if(!dbgNoLoop)renderer.render(scene,camera);
   }
   updateAudio();
 }
@@ -2618,7 +2647,7 @@ function tick(dt){
       player.steerIn=lerp(player.steerIn,player.steerRaw,1-Math.exp(-dt*(releasing?22:9)));
       player.brake=input.brake?1:0;player.handbrake=input.drift;
     }
-    if(NET.inRace)netRemotes(performance.now());
+    if(NET.inRace)netRemotes(performance.now(),dt);
     for(const c of cars){if((c.ai||c.finished)&&!c.remote)aiDrive(c,dt);}
     for(const c of cars){
       const spd=Math.hypot(c.vx,c.vz);c.vmax=Math.max(c.vmax||0,spd);
@@ -2666,7 +2695,7 @@ function init(){
   $('loading').hidden=true;onResize();
   showHome();
   requestAnimationFrame(frame);
-  window.__phd={cars,get player(){return player},get audio(){return snd},get state(){return state},get LEN(){return LEN},get minRad(){return minRad},get DROP(){return DROP},get FINISH_S(){return FINISH_S},get CORNERS(){return CORNERS},get TRACK(){return TRACK},get JUMPS(){return JUMPS},get TUNNELS(){return TUNNELS},get RH(){return RH},startRace,startQuick,input,get scene(){return scene},garageSpin:(a)=>{garage.tt.rotation.y=a;garage.userT=99;},get collCount(){return collCount},placeOnTrack,get KS(){return KS},get S(){return S},get DSA(){return DSA},sim:(sec)=>{for(let t=0;t<sec;t+=1/60)tick(1/60);},shot:(p,l)=>{camera.position.set(p[0],p[1],p[2]);camera.lookAt(l[0],l[1],l[2]);camera.updateMatrixWorld();renderer.render(scene,camera);return renderer.domElement.toDataURL('image/png');},get camera(){return camera},get NET(){return NET},get cars2(){return cars},get world(){return world},get PX(){return PX},get PZ(){return PZ},get RHB(){return RHB},get NX(){return NX},get NZ(){return NZ}};
+  window.__phd={cars,get player(){return player},get audio(){return snd},get state(){return state},get LEN(){return LEN},get minRad(){return minRad},get DROP(){return DROP},get FINISH_S(){return FINISH_S},get CORNERS(){return CORNERS},get TRACK(){return TRACK},get JUMPS(){return JUMPS},get TUNNELS(){return TUNNELS},get RH(){return RH},startRace,startQuick,input,get scene(){return scene},garageSpin:(a)=>{garage.tt.rotation.y=a;garage.userT=99;},get collCount(){return collCount},placeOnTrack,get KS(){return KS},get S(){return S},get DSA(){return DSA},sim:(sec)=>{for(let t=0;t<sec;t+=1/60)tick(1/60);},shot:(p,l)=>{camera.position.set(p[0],p[1],p[2]);camera.lookAt(l[0],l[1],l[2]);camera.updateMatrixWorld();renderer.render(scene,camera);return renderer.domElement.toDataURL('image/png');},get camera(){return camera},get NET(){return NET},set noLoop(v){dbgNoLoop=v},get cars2(){return cars},get world(){return world},get PX(){return PX},get PZ(){return PZ},get RHB(){return RHB},get NX(){return NX},get NZ(){return NZ}};
 }
 const fontsReady=(document.fonts&&document.fonts.load)?Promise.all([document.fonts.load('64px "Rammetto One"'),document.fonts.load('800 20px "M PLUS Rounded 1c"')]).catch(()=>{}):Promise.resolve();
 Promise.race([fontsReady,new Promise(r=>setTimeout(r,2500))]).then(()=>setTimeout(init,30));
