@@ -1832,16 +1832,18 @@ function collide(){
     if(fromA){let m=1e9;for(const q of corners(B,b)){const t=q[0]*nx+q[1]*nz;if(t<m){m=t;px=q[0];pz=q[1];}}}
     else{let m=-1e9;for(const q of corners(A,a)){const t=q[0]*nx+q[1]*nz;if(t>m){m=t;px=q[0];pz=q[1];}}}
     const ma=A.dsg.mass,mb=B.dsg.mass,IA=ma*1.5*A.dsg.izf,IB=mb*1.5*B.dsg.izf;
-    if(!ra){A.x-=nx*best*mb/(ma+mb);A.z-=nz*best*mb/(ma+mb);}if(!rb){B.x+=nx*best*ma/(ma+mb);B.z+=nz*best*ma/(ma+mb);}
+    {const sa=rb?1:mb/(ma+mb),sb=ra?1:ma/(ma+mb);if(!ra){A.x-=nx*best*sa;A.z-=nz*best*sa;}if(!rb){B.x+=nx*best*sb;B.z+=nz*best*sb;}}
     const rax=px-A.x,raz=pz-A.z,rbx=px-B.x,rbz=pz-B.z;
     const vn=((B.vx+B.r*rbz)-(A.vx+A.r*raz))*nx+((B.vz-B.r*rbx)-(A.vz-A.r*rax))*nz;
     if(vn<0){
       const kA=raz*nx-rax*nz,kB=rbz*nx-rbx*nz;
       const j=-1.3*vn/(1/ma+1/mb+kA*kA/IA+kB*kB/IB);
-      if(!ra){A.vx-=j/ma*nx;A.vz-=j/ma*nz;}if(!rb){B.vx+=j/mb*nx;B.vz+=j/mb*nz;}
+      A.vx-=j/ma*nx;A.vz-=j/ma*nz;B.vx+=j/mb*nx;B.vz+=j/mb*nz;
+      if(ra){A.kvx=(A.kvx||0)-j/ma*nx;A.kvz=(A.kvz||0)-j/ma*nz;A.kickT=raceT;}if(rb){B.kvx=(B.kvx||0)+j/mb*nx;B.kvz=(B.kvz||0)+j/mb*nz;B.kickT=raceT;}
       // hit spin: off-centre hits still rotate a car, but softened and capped per contact so a T-bone rarely spins it round
       const SPIN_K=0.25,SPIN_CAP=0.35;
-      if(!ra)A.r-=clamp(SPIN_K*j*kA/IA,-SPIN_CAP,SPIN_CAP);if(!rb)B.r+=clamp(SPIN_K*j*kB/IB,-SPIN_CAP,SPIN_CAP);
+      {const dA=-clamp(SPIN_K*j*kA/IA,-SPIN_CAP,SPIN_CAP),dB=clamp(SPIN_K*j*kB/IB,-SPIN_CAP,SPIN_CAP);
+       if(!ra)A.r+=dA;else A.kr=clamp((A.kr||0)+dA,-1.2,1.2);if(!rb)B.r+=dB;else B.kr=clamp((B.kr||0)+dB,-1.2,1.2);}
       A.hitT=B.hitT=0.8;
       if(-vn>1)collCount++;
       if((A===player||B===player)&&-vn>2){thud(Math.min(0.7,-vn/10));shake=Math.min(1,shake+0.15);}
@@ -2567,7 +2569,7 @@ function netGo(m){
 }
 const r2=v=>Math.round(v*100)/100;
 function netTick(dt){
-  NET.sendT-=dt;if(NET.sendT>0||!player)return;NET.sendT=1/20;
+  NET.sendT-=dt;if(NET.sendT>0||!player)return;NET.sendT=1/30;
   const c=player,f=(c.grounded?1:0)|(c.onRoad?2:0)|(c.handbrake?4:0)|(c.brake>0?8:0)|(c.boostT>0?16:0)|(c.finished?32:0);
   netSend({t:'st',s:[r2(c.x),r2(c.y),r2(c.z),Math.round(c.psi*1000)/1000,r2(c.vx),r2(c.vy),r2(c.vz),r2(c.s),Math.round(c.delta*1000)/1000,f,r2(c.slip||0),r2(c.r),r2(raceT),Math.round(NET.rtt||100)]});
 }
@@ -2586,27 +2588,37 @@ function netPredict(net,now){
   // with the clocks synced, age = our race time now minus the race time stamped on the update (no guessing about network delay)
   const age=NET.startLocal&&NET.off!=null?(now-NET.startLocal)/1000-q[12]:((q[13]||100)/2+myHalf+40+(now-net.at))/1000;
   const lead=clamp(age+0.016,0,0.5),acc=net.acc||0;
-  let x=q[0],z=q[2],vx=q[4],vz=q[6],psi=q[3];const r=q[11],n=3,h=lead/n;
-  for(let k=0;k<n;k++){const a=r*h,ca=Math.cos(a),sa=Math.sin(a),sp=Math.hypot(vx,vz),g=sp>1?Math.max(0,sp+acc*h)/sp:1,nx=(vx*ca+vz*sa)*g,nz=(vz*ca-vx*sa)*g;x+=(vx+nx)*h/2;z+=(vz+nz)*h/2;vx=nx;vz=nz;psi+=a;}
+  let x=q[0],z=q[2],vx=q[4],vz=q[6],psi=q[3];const r0=q[11],n=4,h=lead/n;
+  for(let k=0;k<n;k++){const r=r0*Math.exp(-(k+0.5)*h/0.3),a=r*h,ca=Math.cos(a),sa=Math.sin(a),sp=Math.hypot(vx,vz),g=sp>1?Math.max(0,sp+acc*h)/sp:1,nx=(vx*ca+vz*sa)*g,nz=(vz*ca-vx*sa)*g;x+=(vx+nx)*h/2;z+=(vz+nz)*h/2;vx=nx;vz=nz;psi+=a;}
   const grounded=!!(q[9]&1);
   return {x,z,psi,vx,vz,grounded,y:grounded?q[1]:q[1]+q[5]*lead-4.9*lead*lead};
 }
 function netRemotes(now,dt){
   for(const c of cars){
     if(!c.remote||!c.net)continue;
-    const q=c.net.s,f=q[9],P=netPredict(c.net,now);
+    const q=c.net.s,f=q[9],P=netPredict(c.net,now),fresh=c.netNew||c.ex===undefined;
     if(c.netNew||c.ex===undefined){ // new update: keep the car exactly where it is on screen right now and fade the difference out
-      if(c.ex===undefined||!c.oldNet){c.ex=0;c.ez=0;c.ey=0;c.ep=0;}
-      else{const O=netPredict(c.oldNet,now);c.ex+=O.x-P.x;c.ez+=O.z-P.z;c.ey+=O.y-P.y;c.ep=wrapA(c.ep+O.psi-P.psi);
-        if(Math.hypot(c.ex,c.ez)>10){c.ex=c.ez=c.ey=c.ep=0;}}               // teleported (respawn): just jump
+      if(c.ex===undefined||!c.oldNet){c.ex=0;c.ez=0;c.ep=0;}
+      else{const O=netPredict(c.oldNet,now);c.ex+=O.x-P.x;c.ez+=O.z-P.z;c.ep=wrapA(c.ep+O.psi-P.psi);
+        if(Math.hypot(c.ex,c.ez)>10){c.ex=c.ez=c.ep=0;}}                     // teleported (respawn): just jump
       c.netNew=false;c.oldNet=c.net;
+      if(c.kickT!=null&&q[12]>c.kickT+0.03){c.kvx=c.kvz=c.kr=0;c.kickT=null;}   // their own reaction to the bump has arrived: it takes over
     }
-    const k=Math.exp(-dt*9);c.ex*=k;c.ez*=k;c.ey*=k;c.ep*=k;
-    c.x=P.x+c.ex;c.z=P.z+c.ez;c.psi=P.psi+c.ep;c.vx=P.vx;c.vz=P.vz;c.vy=q[5];c.delta=q[8];
-    c.grounded=P.grounded;c.onRoad=!!(f&2);c.handbrake=!!(f&4);c.brake=f&8?1:0;c.boostT=f&16?0.3:0;
-    c.slip=q[10];c.r=q[11];c.airT=P.grounded?0:0.5;
+    const k=Math.exp(-dt*12);c.ex*=k;c.ez*=k;c.ep*=Math.exp(-dt*15);
+    // a bump we gave this car: show it being shoved straight away, before its own update catches up
+    if(c.kvx||c.kvz){c.ex+=c.kvx*dt;c.ez+=c.kvz*dt;const kk=Math.exp(-dt*2);c.kvx*=kk;c.kvz*=kk;if(Math.hypot(c.kvx,c.kvz)<0.05)c.kvx=c.kvz=0;}
+    if(c.kr){c.ep+=c.kr*dt;c.kr*=Math.exp(-dt*2);if(Math.abs(c.kr)<0.01)c.kr=0;}
+    c.x=P.x+c.ex;c.z=P.z+c.ez;c.psi=P.psi+c.ep;c.vx=P.vx+(c.kvx||0);c.vz=P.vz+(c.kvz||0);c.vy=q[5];c.delta=q[8];
+    c.onRoad=!!(f&2);c.handbrake=!!(f&4);c.brake=f&8?1:0;c.boostT=f&16?0.3:0;
+    c.slip=q[10];c.r=q[11]+(c.kr||0);
+    if(Math.hypot(c.x-PX[c.idx],c.z-PZ[c.idx])>25){const i=nearest(c.x,c.z,80);if(i>=0)c.idx=i;}   // big jump (respawn): find it on the course again
     locate(c);
-    c.y=P.grounded?groundOf(c).h:P.y+c.ey;
+    // height: glued to the road when driving; a smooth arc through the air on jumps, never below the ground
+    const gh=groundOf(c).h,ty=P.grounded?gh:Math.max(gh,P.y);
+    if(fresh)c.ey=isFinite(c.y)&&Math.abs(c.y-ty)<6?c.y-ty:0;          // continuity when an update lands, then follow the arc exactly
+    c.ey=(c.ey||0)*Math.exp(-dt*(P.grounded?14:8));if(P.grounded&&Math.abs(c.ey)<0.12)c.ey=0;
+    c.y=Math.max(gh,ty+c.ey);
+    c.grounded=c.y<=gh+0.05;c.airT=c.grounded?0:0.5;
     c.latA=c.r*Math.hypot(c.vx,c.vz);
   }
 }
