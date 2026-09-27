@@ -154,6 +154,13 @@ function startRace(L) {
   if (!L.players.length) return;
   clearTimer(L); L.vote = null;
   const track = L.nextTrack || pick(TRACK_IDS); L.nextTrack = null; L.track = track;
+  // someone's connection has gone quiet (phone locked, network switch): drop them if it's been long,
+  // otherwise hold the start a moment so their phone can reconnect and keep its seat
+  const now0 = Date.now();
+  for (const p of L.players.slice()) if (now0 - p.lastSeen > STALE_MS) { try { p.ws.terminate(); } catch (e) {} leaveLobby(p); }
+  if (!L.players.length) return;
+  if (L.players.some(p => now0 - p.lastSeen > 4500) && (L.holds = (L.holds || 0) + 1) <= 6) { setTimer(L, 1.5, () => startRace(L)); pushLobby(L); return; }
+  L.holds = 0;
   const racers = L.players.slice(0, MAX_PLAYERS);
   const slots = [...Array(MAX_PLAYERS).keys()].sort(() => Math.random() - 0.5);   // random grid
   const grid = {}; racers.forEach((c, i) => { grid[c.id] = slots[i]; });
@@ -165,12 +172,18 @@ function startRace(L) {
   const roster = [...L.race.racers.values()].map(r => ({ id: r.id, name: r.name, guest: r.guest, car: r.car, slot: grid[r.id] }));
   for (const c of racers) send(c, { t: 'race', track, roster, you: c.id });
   setTimer(L, TIMES.loadTimeout, () => go(L));
+  const chk = setInterval(() => { if (L.state !== 'loading') return clearInterval(chk); maybeGo(L); }, 1000);
   pushLobby(L);
 }
 function maybeGo(L) {
   if (L.state !== 'loading') return;
   if (!L.race.racers.size) return backToLobby(L);
-  for (const id of L.race.racers.keys()) if (!L.race.loaded.has(id)) return;
+  const now = Date.now();
+  for (const id of L.race.racers.keys()) {
+    if (L.race.loaded.has(id)) continue;
+    const p = L.players.find(x => x.id === id);
+    if (p && now - p.lastSeen < STALE_MS) return;          // still loading: wait for them (a silent connection isn't waited for)
+  }
   go(L);
 }
 function go(L) {
@@ -270,13 +283,35 @@ function authed(c, name, guest, token) {
   if (prev && prev !== c) { send(prev, { t: 'kicked', msg: 'Signed in somewhere else.' }); leaveLobby(prev); prev.name = null; prev.ws.close(); }
   if (c.name) online.delete(c.name.toLowerCase());
   c.name = name; c.guest = guest; online.set(key, c);
-  send(c, { t: 'auth', name, guest, token: token || null });
+  if (!c.sid) c.sid = crypto.randomBytes(12).toString('hex');       // lets this player take their seat back after a dropped connection
+  send(c, { t: 'auth', name, guest, token: token || null, sid: c.sid });
+}
+// players whose connection dropped (phone locked, network switch): their name + lobby are kept for a while so they can rejoin
+const parked = new Map();                          // sid -> {name, guest, car, lobbyId, until}
+const PARK_MS = 3 * 60e3;
+function rejoin(c, sid) {
+  sid = String(sid || '');
+  // the old connection may still look alive here (it died silently): take the seat over from it right away
+  for (const o of clients) if (o !== c && o.sid === sid && o.name) {
+    parked.set(sid, { name: o.name, guest: o.guest, car: o.car, lobbyId: o.lobby && o.lobby.id, until: Date.now() + PARK_MS });
+    leaveLobby(o); if (online.get(o.name.toLowerCase()) === o) online.delete(o.name.toLowerCase());
+    o.sid = null; o.name = null; try { o.ws.terminate(); } catch (e) {}
+  }
+  const P = parked.get(sid); parked.delete(sid);
+  if (!P || P.until < Date.now()) return send(c, { t: 'error', where: 'rejoin', msg: 'Session over.' });
+  if (!P.guest && !users[P.name.toLowerCase()]) return send(c, { t: 'error', where: 'rejoin', msg: 'Session over.' });
+  c.sid = sid; c.car = P.car || c.car;
+  if (P.guest && online.has(P.name.toLowerCase())) return send(c, { t: 'error', where: 'rejoin', msg: 'Name in use.' });
+  authed(c, P.name, P.guest, null);
+  const L = P.lobbyId && lobbies.get(P.lobbyId);
+  if (L && L.players.length < MAX_PLAYERS) joinLobby(c, L);
 }
 function handle(c, m) {
   switch (m.t) {
     case 'hello': return send(c, { t: 'welcome', tracks: TRACK_IDS, max: MAX_PLAYERS });
     case 'ping': return send(c, { t: 'pong', c: +m.c || 0, s: Date.now() });   // round-trip time + server clock, for syncing
     case 'guest': if (c.lobby) return; return authed(c, guestName(), true);
+    case 'rejoin': if (c.name) return; return rejoin(c, m.sid);
     case 'register': {
       if (limited(c.ip)) return send(c, { t: 'error', where: 'auth', msg: 'Too many tries. Wait a few minutes.' });
       const name = String(m.name || '').trim(), pass = String(m.pass || '');
@@ -358,21 +393,33 @@ const server = http.createServer((req, res) => {
   res.writeHead(404); res.end('Not found');
 });
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
+const STALE_MS = 9000;                             // players ping every 2 s; this long without a word means the connection is gone
+const clients = new Set();
 let nextId = 1;
 wss.on('connection', (ws, req) => {
   const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
-  const c = { id: nextId++, ws, ip, name: null, guest: true, car: validCar({}), lobby: null, msgs: 0, since: Date.now() };
+  const c = { id: nextId++, ws, ip, name: null, guest: true, car: validCar({}), lobby: null, msgs: 0, since: Date.now(), lastSeen: Date.now(), sid: null };
+  clients.add(c);
   ws.on('pong', () => { ws._dead = false; });
   ws.on('message', (data) => {
-    const now = Date.now(); if (now - c.since > 1000) { c.since = now; c.msgs = 0; }
+    const now = Date.now(); c.lastSeen = now; if (now - c.since > 1000) { c.since = now; c.msgs = 0; }
     if (++c.msgs > 60) return;                                    // flood guard
     let m; try { m = JSON.parse(data); } catch (e) { return; }
     if (m && typeof m.t === 'string') { const run = () => { try { handle(c, m); } catch (e) { console.error(e); } }; if (LAG) setTimeout(run, LAG); else run(); }
   });
-  ws.on('close', () => { leaveLobby(c); if (c.name && online.get(c.name.toLowerCase()) === c) online.delete(c.name.toLowerCase()); });
+  ws.on('close', () => {
+    clients.delete(c);
+    if (c.sid && c.name) parked.set(c.sid, { name: c.name, guest: c.guest, car: c.car, lobbyId: c.lobby && c.lobby.id, until: Date.now() + PARK_MS });
+    leaveLobby(c); if (c.name && online.get(c.name.toLowerCase()) === c) online.delete(c.name.toLowerCase());
+  });
 });
-// heartbeat: drop connections that stop answering pings (phone went to sleep, network died)
-setInterval(() => { for (const ws of wss.clients) { if (ws._dead) { ws.terminate(); continue; } ws._dead = true; try { ws.ping(); } catch (e) {} } }, 20000);
+// heartbeat: drop connections that go quiet (phone went to sleep, network died) so they don't sit in lobbies as ghosts
+setInterval(() => {
+  const now = Date.now();
+  for (const c of clients) if (now - c.lastSeen > 20000) { try { c.ws.terminate(); } catch (e) {} }
+  for (const ws of wss.clients) { if (ws._dead) { ws.terminate(); continue; } ws._dead = true; try { ws.ping(); } catch (e) {} }
+  for (const [k, P] of parked) if (P.until < now) parked.delete(k);
+}, 5000);
 setInterval(() => { const now = Date.now(); let ch = false; for (const t in sessions) if (sessions[t].exp < now) { delete sessions[t]; ch = true; } if (ch) save(SESS_FILE, sessions); }, 3600e3);
 
 server.listen(PORT, () => console.log('Pebble Hill Derby server on http://localhost:' + PORT));
