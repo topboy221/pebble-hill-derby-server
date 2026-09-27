@@ -26,7 +26,7 @@ const TIMES = {                                   // seconds
   afterVote: 3,
 };
 if (process.env.PHD_FAST) Object.assign(TIMES, { publicWait: 3, publicFull: 2, vote: 30, afterVote: 2, afterFirst: 15 });   // for automated tests
-const SNAP_MS = 50;                               // 20 position updates a second
+const SNAP_MS = 33;                               // 30 position updates a second
 
 /* ---------------- storage (JSON files; swap for a database when you outgrow it) ---------------- */
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -403,7 +403,7 @@ wss.on('connection', (ws, req) => {
   ws.on('pong', () => { ws._dead = false; });
   ws.on('message', (data) => {
     const now = Date.now(); c.lastSeen = now; if (now - c.since > 1000) { c.since = now; c.msgs = 0; }
-    if (++c.msgs > 60) return;                                    // flood guard
+    if (++c.msgs > 90) return;                                    // flood guard
     let m; try { m = JSON.parse(data); } catch (e) { return; }
     if (m && typeof m.t === 'string') { const run = () => { try { handle(c, m); } catch (e) { console.error(e); } }; if (LAG) setTimeout(run, LAG); else run(); }
   });
