@@ -2289,9 +2289,11 @@ window.addEventListener('resize',onResize);
 const NET={ws:null,url:'',conn:'off',name:null,guest:true,token:null,view:'auth',err:'',info:'',lobby:null,you:null,
   online:false,inRace:false,results:null,vote:null,myVote:null,voted:null,sendT:0,cdEnd:0,list:[],joinId:null,wantView:null,retry:0};
 try{NET.token=localStorage.getItem('phd-token')||null;}catch(e){}
-const DEFAULT_SERVER='wss://pebble-hill-derby-server.onrender.com/ws';   // the public Pebble Hill Derby server
+const DEFAULT_SERVER='wss://pebble-hill-derby-server-eu.onrender.com/ws';   // the public Pebble Hill Derby server (Frankfurt)
 function defaultServer(){
-  try{const s=localStorage.getItem('phd-server');if(s)return s;}catch(e){}
+  try{const s=localStorage.getItem('phd-server');
+    if(s&&/\/\/pebble-hill-derby-server\.onrender\.com/.test(s)){localStorage.removeItem('phd-server');}   // old Oregon server: moved to the EU one
+    else if(s)return s;}catch(e){}
   // opened from a local test server (your PC / LAN)? use that one, otherwise the public server
   if(/^https?:$/.test(location.protocol)&&/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname))return (location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws';
   return DEFAULT_SERVER;
