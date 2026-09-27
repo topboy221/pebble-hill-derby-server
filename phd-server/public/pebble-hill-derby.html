@@ -2289,6 +2289,7 @@ window.addEventListener('resize',onResize);
 const NET={ws:null,url:'',conn:'off',name:null,guest:true,token:null,view:'auth',err:'',info:'',lobby:null,you:null,
   online:false,inRace:false,results:null,vote:null,myVote:null,voted:null,sendT:0,cdEnd:0,list:[],joinId:null,wantView:null,retry:0};
 try{NET.token=localStorage.getItem('phd-token')||null;}catch(e){}
+try{NET.sid=sessionStorage.getItem('phd-sid')||null;}catch(e){}
 const DEFAULT_SERVER='wss://pebble-hill-derby-server-eu.onrender.com/ws';   // the public Pebble Hill Derby server (Frankfurt)
 function defaultServer(){
   try{const s=localStorage.getItem('phd-server');
@@ -2314,11 +2315,16 @@ function netConnect(url){
   clearTimeout(NET.openTimer);   // a connection that neither opens nor fails (sleeping server, blocked network) is dropped after 12 s and retried
   NET.openTimer=setTimeout(()=>{if(ws.readyState===0){try{ws.close();}catch(e){}if(NET.ws===ws&&ws.onclose)ws.onclose();}},12000);
   ws.onopen=()=>{clearTimeout(NET.openTimer);NET.conn='on';NET.probe='';NET.retry=0;NET.tries=0;netPing();try{localStorage.setItem('phd-server',url);}catch(e){}netSend({t:'hello'});
-    if(NET.name&&NET.guest)netSend({t:'guest'});else if(NET.token)netSend({t:'resume',token:NET.token});else{NET.view='auth';mpRender();}};
-  ws.onmessage=e=>{let m;try{m=JSON.parse(e.data);}catch(_){return;}netMsg(m);};
+    NET.lastMsg=performance.now();
+    if(NET.sid)netSend({t:'rejoin',sid:NET.sid});else netSignIn();};
+  ws.onmessage=e=>{NET.lastMsg=performance.now();let m;try{m=JSON.parse(e.data);}catch(_){return;}netMsg(m);};
   ws.onclose=()=>{clearTimeout(NET.openTimer);if(NET.ws!==ws)return;ws.onclose=null;NET.ws=null;const was=NET.conn;NET.conn='off';
-    if(NET.inRace||NET.results||NET.lobby){netDropRace('Connection to the server lost.');}
+    const hadSeat=!!(NET.sid&&NET.name)&&!NET.leavingMp;
+    if(NET.inRace||NET.results){netDropRace('Connection dropped. Getting you back in…');}
+    else if(NET.lobby&&hadSeat){NET.reconnecting=true;lobbyStatus();}
+    else if(NET.lobby)netDropRace('Connection to the server lost.');
     NET.lobby=null;
+    if(was==='on'&&hadSeat){NET.retry=(NET.retry||0)+1;if(NET.retry<=8){setTimeout(()=>{if(!NET.ws)netConnect();},Math.min(4000,400*NET.retry));return;}}
     if(was==='connecting'){
       if(url!==DEFAULT_SERVER&&!NET.tries){try{localStorage.removeItem('phd-server');}catch(e){}NET.tries=1;setTimeout(()=>netConnect(DEFAULT_SERVER),300);NET.conn='connecting';mpRender();return;}
       if((NET.tries||0)<14&&menuScreen==='multi'){NET.tries=(NET.tries||0)+1;NET.conn='connecting';NET.waking=true;mpRender();setTimeout(()=>{if(!NET.ws&&menuScreen==='multi')netConnect(url);},4500);return;}
@@ -2335,13 +2341,21 @@ function netProbe(url){
     .catch(()=>{if(done)return;done=true;clearTimeout(t);NET.probe='down';mpRender();});}catch(e){NET.probe='down';}
 }
 function netPing(){netSend({t:'ping',c:Math.round(performance.now())});}
-setInterval(()=>{if(NET.conn==='on')netPing();},2000);
+function netSignIn(){if(NET.name&&NET.guest)netSend({t:'guest'});else if(NET.token)netSend({t:'resume',token:NET.token});else{NET.view='auth';mpRender();}}
+// watchdog: no word from the server for 7 s means the connection silently died (phone slept, network switched): reconnect
+setInterval(()=>{if(NET.conn!=='on')return;if(performance.now()-(NET.lastMsg||0)>7000){try{NET.ws.close();}catch(e){}if(NET.ws&&NET.ws.onclose)NET.ws.onclose();}else netPing();},2000);
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden||!NET.sid)return;                                        // back on the page: check the line right away
+  if(!NET.ws||NET.ws.readyState>1||performance.now()-(NET.lastMsg||0)>4000){if(NET.ws){try{NET.ws.close();}catch(e){}if(NET.ws&&NET.ws.onclose)NET.ws.onclose();}else if(NET.conn==='off')netConnect();}
+  else netPing();
+});
 function mySel(){return {design:sel.design,paint:sel.paint,rim:sel.rim,fin:sel.fin};}
 function netMsg(m){
   switch(m.t){
-    case 'auth':NET.name=m.name;NET.guest=m.guest;NET.err='';if(m.token){NET.token=m.token;try{localStorage.setItem('phd-token',m.token);}catch(e){}}
+    case 'auth':NET.name=m.name;NET.guest=m.guest;NET.err='';NET.retry=0;NET.reconnecting=false;if(m.sid){NET.sid=m.sid;try{sessionStorage.setItem('phd-sid',m.sid);}catch(e){}}if(m.token){NET.token=m.token;try{localStorage.setItem('phd-token',m.token);}catch(e){}}
       NET.view='hub';netSend({t:'car',car:mySel()});mpRender();break;
     case 'error':
+      if(m.where==='rejoin'){NET.sid=null;try{sessionStorage.removeItem('phd-sid');}catch(e){}netSignIn();break;}
       if(m.where==='resume'){NET.token=null;try{localStorage.removeItem('phd-token');}catch(e){}NET.view='auth';NET.err='';}
       else NET.err=m.msg;
       mpRender();break;
@@ -2478,6 +2492,7 @@ function lobbyRender(){
   lobbyStatus();
 }
 function lobbyStatus(){
+  if(NET.reconnecting&&!NET.lobby){$('lobbyStatus').textContent='Connection dropped. Reconnecting…';return;}
   const L=NET.lobby;if(!L)return;let t='';netRenderVote();
   if(L.state==='lobby'){
     const next=L.track?' Next track: '+TRK_NAME(L.track)+'.':'';
