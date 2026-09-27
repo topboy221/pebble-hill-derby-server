@@ -177,8 +177,10 @@ function go(L) {
   if (L.state !== 'loading') return;
   clearTimer(L);
   for (const id of [...L.race.racers.keys()]) if (!L.race.loaded.has(id)) L.race.racers.get(id).dnf = true;   // never loaded: sits this one out
-  L.state = 'race'; L.race.start = Date.now() + TIMES.countdown * 1000;
-  for (const c of L.players) if (L.race.racers.has(c.id)) send(c, { t: 'go', countdown: TIMES.countdown });
+  // everyone gets the same start moment on the server clock (plus a little slack for delivery), so all countdowns hit GO together
+  const now = Date.now();
+  L.state = 'race'; L.race.start = now + TIMES.countdown * 1000 + 700;
+  for (const c of L.players) if (L.race.racers.has(c.id)) send(c, { t: 'go', countdown: TIMES.countdown, startAt: L.race.start, now });
   L.race.snapTimer = setInterval(() => snap(L), SNAP_MS);
   L.race.endTimer = setTimeout(() => endRace(L), (TIMES.countdown + TIMES.maxRace) * 1000);
   pushLobby(L);
@@ -273,7 +275,7 @@ function authed(c, name, guest, token) {
 function handle(c, m) {
   switch (m.t) {
     case 'hello': return send(c, { t: 'welcome', tracks: TRACK_IDS, max: MAX_PLAYERS });
-    case 'ping': return send(c, { t: 'pong', c: +m.c || 0 });              // lets each player measure its round-trip time
+    case 'ping': return send(c, { t: 'pong', c: +m.c || 0, s: Date.now() });   // round-trip time + server clock, for syncing
     case 'guest': if (c.lobby) return; return authed(c, guestName(), true);
     case 'register': {
       if (limited(c.ip)) return send(c, { t: 'error', where: 'auth', msg: 'Too many tries. Wait a few minutes.' });
