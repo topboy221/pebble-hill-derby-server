@@ -1692,7 +1692,7 @@ function resetRace(){
   finishCount=0;raceT=0;countT=3.6;afterFinishT=0;resultsShown=false;finalShown=false;
   cars.forEach((c,k)=>{
     Object.assign(c,{finished:false,finishTime:0,place:0,pushes:0,pushTimer:0.3+Math.random()*0.2,driftCharge:0,boostT:0,airT:0,stuckT:0,brake:0,handbrake:false,pitch:0,roll:0,bounce:0,bounceV:0,assist:0,ax:0,fyf:0,fyr:0,draft:0,tow:null,towCD:2+Math.random()*4,passT:0,lane:c.baseLane});
-    const slot=c.slot!=null?c.slot:c===player?PLAYER_SLOT:(k<PLAYER_SLOT?k:k+1);placeOnTrack(c,GRID[slot][0],GRID[slot][1],0);if(c.remote){c.net=null;c.oldNet=null;c.ex=undefined;}
+    const slot=c.slot!=null?c.slot:c===player?PLAYER_SLOT:(k<PLAYER_SLOT?k:k+1);placeOnTrack(c,GRID[slot][0],GRID[slot][1],0);if(c.remote){c.net=null;c.oldNet=null;c.ex=undefined;c.buf=[];}
   });
   world.gateArm.rotation.z=0;gateOpen=0;
   state='countdown';lastCount=4;
@@ -1832,18 +1832,16 @@ function collide(){
     if(fromA){let m=1e9;for(const q of corners(B,b)){const t=q[0]*nx+q[1]*nz;if(t<m){m=t;px=q[0];pz=q[1];}}}
     else{let m=-1e9;for(const q of corners(A,a)){const t=q[0]*nx+q[1]*nz;if(t>m){m=t;px=q[0];pz=q[1];}}}
     const ma=A.dsg.mass,mb=B.dsg.mass,IA=ma*1.5*A.dsg.izf,IB=mb*1.5*B.dsg.izf;
-    {const sa=rb?1:mb/(ma+mb),sb=ra?1:ma/(ma+mb);if(!ra){A.x-=nx*best*sa;A.z-=nz*best*sa;}if(!rb){B.x+=nx*best*sb;B.z+=nz*best*sb;}}
+    if(!ra){A.x-=nx*best*mb/(ma+mb);A.z-=nz*best*mb/(ma+mb);}if(!rb){B.x+=nx*best*ma/(ma+mb);B.z+=nz*best*ma/(ma+mb);}
     const rax=px-A.x,raz=pz-A.z,rbx=px-B.x,rbz=pz-B.z;
     const vn=((B.vx+B.r*rbz)-(A.vx+A.r*raz))*nx+((B.vz-B.r*rbx)-(A.vz-A.r*rax))*nz;
     if(vn<0){
       const kA=raz*nx-rax*nz,kB=rbz*nx-rbx*nz;
       const j=-1.3*vn/(1/ma+1/mb+kA*kA/IA+kB*kB/IB);
-      A.vx-=j/ma*nx;A.vz-=j/ma*nz;B.vx+=j/mb*nx;B.vz+=j/mb*nz;
-      if(ra){A.kvx=(A.kvx||0)-j/ma*nx;A.kvz=(A.kvz||0)-j/ma*nz;A.kickT=raceT;}if(rb){B.kvx=(B.kvx||0)+j/mb*nx;B.kvz=(B.kvz||0)+j/mb*nz;B.kickT=raceT;}
+      if(!ra){A.vx-=j/ma*nx;A.vz-=j/ma*nz;}if(!rb){B.vx+=j/mb*nx;B.vz+=j/mb*nz;}
       // hit spin: off-centre hits still rotate a car, but softened and capped per contact so a T-bone rarely spins it round
       const SPIN_K=0.25,SPIN_CAP=0.35;
-      {const dA=-clamp(SPIN_K*j*kA/IA,-SPIN_CAP,SPIN_CAP),dB=clamp(SPIN_K*j*kB/IB,-SPIN_CAP,SPIN_CAP);
-       if(!ra)A.r+=dA;else A.kr=clamp((A.kr||0)+dA,-1.2,1.2);if(!rb)B.r+=dB;else B.kr=clamp((B.kr||0)+dB,-1.2,1.2);}
+      if(!ra)A.r-=clamp(SPIN_K*j*kA/IA,-SPIN_CAP,SPIN_CAP);if(!rb)B.r+=clamp(SPIN_K*j*kB/IB,-SPIN_CAP,SPIN_CAP);
       A.hitT=B.hitT=0.8;
       if(-vn>1)collCount++;
       if((A===player||B===player)&&-vn>2){thud(Math.min(0.7,-vn/10));shake=Math.min(1,shake+0.15);}
@@ -2320,7 +2318,7 @@ function netConnect(url){
     NET.lastMsg=performance.now();
     if(NET.sid)netSend({t:'rejoin',sid:NET.sid});else netSignIn();};
   ws.onmessage=e=>{NET.lastMsg=performance.now();let m;try{m=JSON.parse(e.data);}catch(_){return;}netMsg(m);};
-  ws.onclose=()=>{clearTimeout(NET.openTimer);if(NET.ws!==ws)return;ws.onclose=null;NET.ws=null;const was=NET.conn;NET.conn='off';
+  ws.onclose=(ev)=>{(NET.log=NET.log||[]).push('close '+(ev&&ev.code)+' '+(NET.inRace?'racing':''));clearTimeout(NET.openTimer);if(NET.ws!==ws)return;ws.onclose=null;NET.ws=null;const was=NET.conn;NET.conn='off';
     const hadSeat=!!(NET.sid&&NET.name)&&!NET.leavingMp;
     if(NET.inRace||NET.results){netDropRace('Connection dropped. Getting you back in…');}
     else if(NET.lobby&&hadSeat){NET.reconnecting=true;lobbyStatus();}
@@ -2345,7 +2343,10 @@ function netProbe(url){
 function netPing(){netSend({t:'ping',c:Math.round(performance.now())});}
 function netSignIn(){if(NET.name&&NET.guest)netSend({t:'guest'});else if(NET.token)netSend({t:'resume',token:NET.token});else{NET.view='auth';mpRender();}}
 // watchdog: no word from the server for 7 s means the connection silently died (phone slept, network switched): reconnect
-setInterval(()=>{if(NET.conn!=='on')return;if(performance.now()-(NET.lastMsg||0)>7000){try{NET.ws.close();}catch(e){}if(NET.ws&&NET.ws.onclose)NET.ws.onclose();}else netPing();},2000);
+setInterval(()=>{
+  const now=performance.now(),stalled=now-(NET.wdLast||now)>4000;NET.wdLast=now;
+  if(stalled&&NET.conn==='on'){NET.lastMsg=now;netPing();return;}   // we were busy (building a track, tab asleep): that's us, not the network
+  if(NET.conn!=='on')return;if(now-(NET.lastMsg||0)>7000){(NET.log=NET.log||[]).push('watchdog '+Math.round(performance.now()-(NET.lastMsg||0)));try{NET.ws.close();}catch(e){}if(NET.ws&&NET.ws.onclose)NET.ws.onclose();}else netPing();},2000);
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden||!NET.sid)return;                                        // back on the page: check the line right away
   if(!NET.ws||NET.ws.readyState>1||performance.now()-(NET.lastMsg||0)>4000){if(NET.ws){try{NET.ws.close();}catch(e){}if(NET.ws&&NET.ws.onclose)NET.ws.onclose();}else if(NET.conn==='off')netConnect();}
@@ -2537,7 +2538,7 @@ function netRace(m){
   ensureTrack(m.track,()=>{
     setupOnlineCars(m.roster);
     $('loadMsg').textContent='Waiting for the other racers…';$('loading').hidden=false;
-    netPrewarm();
+    netPrewarm();NET.lastMsg=performance.now();
     state='netwait';netSend({t:'loaded'});
   },' · online race');
 }
@@ -2569,17 +2570,22 @@ function netGo(m){
 }
 const r2=v=>Math.round(v*100)/100;
 function netTick(dt){
-  NET.sendT-=dt;if(NET.sendT>0||!player)return;NET.sendT=1/30;
+  NET.sendT-=dt;if(NET.sendT>0||!player)return;NET.sendT=1/20;
   const c=player,f=(c.grounded?1:0)|(c.onRoad?2:0)|(c.handbrake?4:0)|(c.brake>0?8:0)|(c.boostT>0?16:0)|(c.finished?32:0);
   netSend({t:'st',s:[r2(c.x),r2(c.y),r2(c.z),Math.round(c.psi*1000)/1000,r2(c.vx),r2(c.vy),r2(c.vz),r2(c.s),Math.round(c.delta*1000)/1000,f,r2(c.slip||0),r2(c.r),r2(raceT),Math.round(NET.rtt||100)]});
 }
 function netSnap(m){
+  NET.snapN=(NET.snapN||0)+1;
   if(!NET.inRace&&!NET.results)return;const now=performance.now();
   for(const a of m.cars){const c=cars.find(k=>k.netId===a[0]);if(!c||!c.remote)continue;const q=a.slice(1),p=c.net;
     if(p&&p.s[12]===q[12])continue;                                   // same update again (server re-sends the latest)
     // speed-up/slow-down along the track, measured between the car's own updates (their race clock)
     let acc=p?p.acc:0;if(p&&q[12]>p.s[12]){const dtq=q[12]-p.s[12];if(dtq<0.5){const sp=Math.hypot(q[4],q[6]),so=Math.hypot(p.s[4],p.s[6]);acc=lerp(acc,clamp((sp-so)/dtq,-12,8),0.35);}}
-    c.net={s:q,at:now,acc};c.netNew=true;}
+    c.net={s:q,at:now,acc};c.netNew=true;
+    // keep a short history of this car's updates, stamped with its race clock, to draw it smoothly a moment in the past
+    const b=c.buf||(c.buf=[]);if(!b.length||q[12]>b[b.length-1].t){b.push({t:q[12],s:q});if(b.length>60)b.shift();}
+    if(NET.startLocal){const lag=(now-NET.startLocal)/1000-q[12];if(lag>-0.5&&lag<2)NET.lagEst=NET.lagEst==null?lag:lerp(NET.lagEst,lag,lag>NET.lagEst?0.25:0.03);}
+  }
 }
 // remote cars: their last update is already old by the time it reaches us (their half of the round trip + ours + server hold),
 // so we predict where they are *now* by carrying them forward along their curve, then blend any correction in smoothly
@@ -2588,36 +2594,40 @@ function netPredict(net,now){
   // with the clocks synced, age = our race time now minus the race time stamped on the update (no guessing about network delay)
   const age=NET.startLocal&&NET.off!=null?(now-NET.startLocal)/1000-q[12]:((q[13]||100)/2+myHalf+40+(now-net.at))/1000;
   const lead=clamp(age+0.016,0,0.5),acc=net.acc||0;
-  let x=q[0],z=q[2],vx=q[4],vz=q[6],psi=q[3];const r0=q[11],n=4,h=lead/n;
-  for(let k=0;k<n;k++){const r=r0*Math.exp(-(k+0.5)*h/0.3),a=r*h,ca=Math.cos(a),sa=Math.sin(a),sp=Math.hypot(vx,vz),g=sp>1?Math.max(0,sp+acc*h)/sp:1,nx=(vx*ca+vz*sa)*g,nz=(vz*ca-vx*sa)*g;x+=(vx+nx)*h/2;z+=(vz+nz)*h/2;vx=nx;vz=nz;psi+=a;}
+  let x=q[0],z=q[2],vx=q[4],vz=q[6],psi=q[3];const r=q[11],n=3,h=lead/n;
+  for(let k=0;k<n;k++){const a=r*h,ca=Math.cos(a),sa=Math.sin(a),sp=Math.hypot(vx,vz),g=sp>1?Math.max(0,sp+acc*h)/sp:1,nx=(vx*ca+vz*sa)*g,nz=(vz*ca-vx*sa)*g;x+=(vx+nx)*h/2;z+=(vz+nz)*h/2;vx=nx;vz=nz;psi+=a;}
   const grounded=!!(q[9]&1);
   return {x,z,psi,vx,vz,grounded,y:grounded?q[1]:q[1]+q[5]*lead-4.9*lead*lead};
 }
+// other players are drawn a fixed moment in the past (their network delay + a small buffer), smoothly between two real updates:
+// no guessing, so no wobble on jumps or overshoot on turns
 function netRemotes(now,dt){
+  if(!NET.startLocal)return;
+  const target=clamp((NET.lagEst!=null?NET.lagEst:0.1)+0.07,0.08,0.45);
+  NET.D=NET.D==null?target:lerp(NET.D,target,1-Math.exp(-dt*0.8));        // drift slowly so the playback never jumps
+  const rt=(now-NET.startLocal)/1000-NET.D;
   for(const c of cars){
-    if(!c.remote||!c.net)continue;
-    const q=c.net.s,f=q[9],P=netPredict(c.net,now),fresh=c.netNew||c.ex===undefined;
-    if(c.netNew||c.ex===undefined){ // new update: keep the car exactly where it is on screen right now and fade the difference out
-      if(c.ex===undefined||!c.oldNet){c.ex=0;c.ez=0;c.ep=0;}
-      else{const O=netPredict(c.oldNet,now);c.ex+=O.x-P.x;c.ez+=O.z-P.z;c.ep=wrapA(c.ep+O.psi-P.psi);
-        if(Math.hypot(c.ex,c.ez)>10){c.ex=c.ez=c.ep=0;}}                     // teleported (respawn): just jump
-      c.netNew=false;c.oldNet=c.net;
-      if(c.kickT!=null&&q[12]>c.kickT+0.03){c.kvx=c.kvz=c.kr=0;c.kickT=null;}   // their own reaction to the bump has arrived: it takes over
+    if(!c.remote||!c.buf||!c.buf.length)continue;
+    const b=c.buf;while(b.length>2&&b[1].t<=rt)b.shift();
+    const A=b[0],B=b[1];let x,y,z,vx,vy,vz,psi,q;
+    const hermite=(p0,v0,p1,v1,h,u)=>{const u2=u*u,u3=u2*u;return (2*u3-3*u2+1)*p0+(u3-2*u2+u)*h*v0+(-2*u3+3*u2)*p1+(u3-u2)*h*v1;};
+    const dhermite=(p0,v0,p1,v1,h,u)=>{const u2=u*u;return ((6*u2-6*u)*p0+(3*u2-4*u+1)*h*v0+(-6*u2+6*u)*p1+(3*u2-2*u)*h*v1)/h;};
+    if(B&&rt>=A.t&&rt<=B.t&&B.t-A.t<0.35&&Math.hypot(B.s[0]-A.s[0],B.s[2]-A.s[2])<25){
+      const a=A.s,e=B.s,h=B.t-A.t,u=(rt-A.t)/h;q=u<0.5?a:e;
+      x=hermite(a[0],a[4],e[0],e[4],h,u);z=hermite(a[2],a[6],e[2],e[6],h,u);y=hermite(a[1],a[5],e[1],e[5],h,u);
+      vx=dhermite(a[0],a[4],e[0],e[4],h,u);vz=dhermite(a[2],a[6],e[2],e[6],h,u);vy=lerp(a[5],e[5],u);
+      psi=a[3]+wrapA(e[3]-a[3])*u;
+    }else{ // nothing to blend between (start, a gap, or a respawn): hold the nearest update, nudged along for at most 0.12 s
+      const S=(B&&rt>B.t)||!B?(B||A):A,e=S.s,t=clamp(rt-S.t,0,0.12);q=e;
+      x=e[0]+e[4]*t;z=e[2]+e[6]*t;y=e[1]+e[5]*t;vx=e[4];vz=e[6];vy=e[5];psi=e[3]+e[11]*t;
     }
-    const k=Math.exp(-dt*12);c.ex*=k;c.ez*=k;c.ep*=Math.exp(-dt*15);
-    // a bump we gave this car: show it being shoved straight away, before its own update catches up
-    if(c.kvx||c.kvz){c.ex+=c.kvx*dt;c.ez+=c.kvz*dt;const kk=Math.exp(-dt*2);c.kvx*=kk;c.kvz*=kk;if(Math.hypot(c.kvx,c.kvz)<0.05)c.kvx=c.kvz=0;}
-    if(c.kr){c.ep+=c.kr*dt;c.kr*=Math.exp(-dt*2);if(Math.abs(c.kr)<0.01)c.kr=0;}
-    c.x=P.x+c.ex;c.z=P.z+c.ez;c.psi=P.psi+c.ep;c.vx=P.vx+(c.kvx||0);c.vz=P.vz+(c.kvz||0);c.vy=q[5];c.delta=q[8];
-    c.onRoad=!!(f&2);c.handbrake=!!(f&4);c.brake=f&8?1:0;c.boostT=f&16?0.3:0;
-    c.slip=q[10];c.r=q[11]+(c.kr||0);
+    const f=q[9];
+    c.x=x;c.z=z;c.psi=psi;c.vx=vx;c.vz=vz;c.vy=vy;c.delta=q[8];
+    c.onRoad=!!(f&2);c.handbrake=!!(f&4);c.brake=f&8?1:0;c.boostT=f&16?0.3:0;c.slip=q[10];c.r=q[11];
     if(Math.hypot(c.x-PX[c.idx],c.z-PZ[c.idx])>25){const i=nearest(c.x,c.z,80);if(i>=0)c.idx=i;}   // big jump (respawn): find it on the course again
     locate(c);
-    // height: glued to the road when driving; a smooth arc through the air on jumps, never below the ground
-    const gh=groundOf(c).h,ty=P.grounded?gh:Math.max(gh,P.y);
-    if(fresh)c.ey=isFinite(c.y)&&Math.abs(c.y-ty)<6?c.y-ty:0;          // continuity when an update lands, then follow the arc exactly
-    c.ey=(c.ey||0)*Math.exp(-dt*(P.grounded?14:8));if(P.grounded&&Math.abs(c.ey)<0.12)c.ey=0;
-    c.y=Math.max(gh,ty+c.ey);
+    const gh=groundOf(c).h,grounded=!!(A.s[9]&1)&&(!B||!!(B.s[9]&1));
+    c.y=grounded?gh:Math.max(gh,y);
     c.grounded=c.y<=gh+0.05;c.airT=c.grounded?0:0.5;
     c.latA=c.r*Math.hypot(c.vx,c.vz);
   }
