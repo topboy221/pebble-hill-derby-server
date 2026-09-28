@@ -1692,7 +1692,7 @@ function resetRace(){
   finishCount=0;raceT=0;countT=3.6;afterFinishT=0;resultsShown=false;finalShown=false;
   cars.forEach((c,k)=>{
     Object.assign(c,{finished:false,finishTime:0,place:0,pushes:0,pushTimer:0.3+Math.random()*0.2,driftCharge:0,boostT:0,airT:0,stuckT:0,brake:0,handbrake:false,pitch:0,roll:0,bounce:0,bounceV:0,assist:0,ax:0,fyf:0,fyr:0,draft:0,tow:null,towCD:2+Math.random()*4,passT:0,lane:c.baseLane});
-    const slot=c.slot!=null?c.slot:c===player?PLAYER_SLOT:(k<PLAYER_SLOT?k:k+1);placeOnTrack(c,GRID[slot][0],GRID[slot][1],0);if(c.remote){c.net=null;c.oldNet=null;c.ex=undefined;c.buf=[];c.kvx=c.kvz=c.kox=c.koz=c.kop=c.kr=0;c.gotHitT=c.hitDoneT=c.kickT=null;c.pendHit=null;}
+    const slot=c.slot!=null?c.slot:c===player?PLAYER_SLOT:(k<PLAYER_SLOT?k:k+1);placeOnTrack(c,GRID[slot][0],GRID[slot][1],0);if(c.remote){c.net=null;c.oldNet=null;c.ex=undefined;c.buf=[];c.kvx=c.kvz=c.kox=c.koz=c.kop=c.kr=0;c.pj=undefined;c.gotHitT=c.hitDoneT=c.kickT=null;c.pendHit=null;}
   });
   world.gateArm.rotation.z=0;gateOpen=0;
   state='countdown';lastCount=4;
@@ -1814,8 +1814,8 @@ function corners(c,a){const b=c.box,o=[];for(const [sf,sl] of [[1,1],[1,-1],[-1,
 let collCount=0;
 function collide(){
   for(let ia=0;ia<cars.length;ia++)for(let ib=ia+1;ib<cars.length;ib++){
-    const A=cars[ia],B=cars[ib];if(Math.abs(A.y-B.y)>1.6)continue;
-    const ra=!!A.remote,rb=!!B.remote;if(ra&&rb)continue;
+    const A=cars[ia],B=cars[ib],ra=!!A.remote,rb=!!B.remote;if(ra&&rb)continue;
+    if(Math.abs(A.y-B.y)>(ra||rb?2.2:1.6))continue;
     const dx0=B.x-A.x,dz0=B.z-A.z;if(dx0*dx0+dz0*dz0>36)continue;
     const a=carAxes(A),b=carAxes(B),dx=b.cx-a.cx,dz=b.cz-a.cz;
     let best=1e9,nx=0,nz=0,fromA=true;
@@ -1835,6 +1835,9 @@ function collide(){
     if(!ra){A.x-=nx*best*mb/(ma+mb);A.z-=nz*best*mb/(ma+mb);}if(!rb){B.x+=nx*best*ma/(ma+mb);B.z+=nz*best*ma/(ma+mb);}
     // another player's car: if they already told us about this bump, it's been applied, don't hit twice
     const R=ra?A:rb?B:null;if(R&&R.gotHitT!=null&&raceT-R.gotHitT<0.5)continue;
+    // and once we've bumped another player, their car on our screen only reflects that a moment later: one bump per 0.4 s,
+    // otherwise we'd keep hitting the same stale car and fire each other off at silly speeds
+    if(R&&R.hitDoneT!=null&&raceT-R.hitDoneT<0.4)continue;
     const rax=px-A.x,raz=pz-A.z,rbx=px-B.x,rbz=pz-B.z;
     const vn=((B.vx+B.r*rbz)-(A.vx+A.r*raz))*nx+((B.vz-B.r*rbx)-(A.vz-A.r*rax))*nz;
     if(vn<0){
@@ -1846,6 +1849,7 @@ function collide(){
       // hit spin: off-centre hits still rotate a car, but softened and capped per contact so a T-bone rarely spins it round
       const SPIN_K=0.25,SPIN_CAP=0.35,dA=-clamp(SPIN_K*j*kA/IA,-SPIN_CAP,SPIN_CAP),dB=clamp(SPIN_K*j*kB/IB,-SPIN_CAP,SPIN_CAP);
       if(!ra)A.r+=dA;if(!rb)B.r+=dB;
+      if(R&&NET.dbg)(NET.log=NET.log||[]).push('hit vn '+vn.toFixed(2)+' j '+Math.round(j)+' n '+nx.toFixed(2)+','+nz.toFixed(2)+' best '+best.toFixed(2));
       if(R){const sg=R===A?-1:1,jx=sg*j*nx,jz=sg*j*nz,dr=R===A?dA:dB,m=R.dsg.mass;
         R.kvx=(R.kvx||0)+jx/m;R.kvz=(R.kvz||0)+jz/m;R.kr=clamp((R.kr||0)+dr,-1.2,1.2);R.kickT=raceT;R.hitDoneT=raceT;
         const P=R.pendHit||(R.pendHit={jx:0,jz:0,r:0});P.jx+=jx;P.jz+=jz;P.r+=dr;}
@@ -2617,18 +2621,27 @@ function netRemotes(now,dt){
   for(const c of cars){
     if(!c.remote||!c.buf||!c.buf.length)continue;
     const b=c.buf;while(b.length>2&&b[1].t<=rt)b.shift();
-    const A=b[0],B=b[1];let x,y,z,vx,vy,vz,psi,q;
+    const A=b[0],B=b[1];let x,y,z,vx,vy,vz,psi,q,rr;
     const hermite=(p0,v0,p1,v1,h,u)=>{const u2=u*u,u3=u2*u;return (2*u3-3*u2+1)*p0+(u3-2*u2+u)*h*v0+(-2*u3+3*u2)*p1+(u3-u2)*h*v1;};
     const dhermite=(p0,v0,p1,v1,h,u)=>{const u2=u*u;return ((6*u2-6*u)*p0+(3*u2-4*u+1)*h*v0+(-6*u2+6*u)*p1+(3*u2-2*u)*h*v1)/h;};
     if(B&&rt>=A.t&&rt<=B.t&&B.t-A.t<0.35&&Math.hypot(B.s[0]-A.s[0],B.s[2]-A.s[2])<25){
       const a=A.s,e=B.s,h=B.t-A.t,u=(rt-A.t)/h;q=u<0.5?a:e;
       x=hermite(a[0],a[4],e[0],e[4],h,u);z=hermite(a[2],a[6],e[2],e[6],h,u);y=hermite(a[1],a[5],e[1],e[5],h,u);
       vx=dhermite(a[0],a[4],e[0],e[4],h,u);vz=dhermite(a[2],a[6],e[2],e[6],h,u);vy=lerp(a[5],e[5],u);
-      psi=a[3]+wrapA(e[3]-a[3])*u;
+      psi=a[3]+wrapA(e[3]-a[3])*u;rr=lerp(a[11],e[11],u);
     }else{ // nothing to blend between (start, a gap, or a respawn): hold the nearest update, nudged along for at most 0.12 s
       const S=(B&&rt>B.t)||!B?(B||A):A,e=S.s,t=clamp(rt-S.t,0,0.12);q=e;
-      x=e[0]+e[4]*t;z=e[2]+e[6]*t;y=e[1]+e[5]*t;vx=e[4];vz=e[6];vy=e[5];psi=e[3]+e[11]*t;
+      x=e[0]+e[4]*t;z=e[2]+e[6]*t;y=e[1]+e[5]*t;vx=e[4];vz=e[6];vy=e[5];psi=e[3]+e[11]*t;rr=e[11];
     }
+    // bring it forward to *now*: carry that smooth past position on along its own path for the playback delay.
+    // The path it's on is already smooth, so this stays smooth, and both screens now agree where each car is.
+    {const T=NET.noProject?0:NET.D,n=3,h=T/n,x0=x,z0=z,p0=psi,v0x=vx,v0z=vz;let px=x,pz=z,pvx=vx,pvz=vz,pp=psi;
+     for(let k=0;k<n;k++){const r=rr*Math.exp(-(k+0.5)*h/0.35),ang=r*h,ca=Math.cos(ang),sa=Math.sin(ang),nx=pvx*ca+pvz*sa,nz=pvz*ca-pvx*sa;px+=(pvx+nx)*h/2;pz+=(pvz+nz)*h/2;pvx=nx;pvz=nz;pp+=ang;}
+     // the step forward itself is eased (~0.13 s) so the little kinks between updates don't show as a wobble
+     const ox=px-x0,oz=pz-z0,op=wrapA(pp-p0),ovx=pvx-v0x,ovz=pvz-v0z,oy=vy*T-4.9*T*T;
+     if(c.pj===undefined||Math.hypot(ox-c.pj[0],oz-c.pj[1])>6)c.pj=[ox,oz,op,ovx,ovz,oy];
+     else{const k=1-Math.exp(-dt/0.13),J=c.pj;J[0]+=(ox-J[0])*k;J[1]+=(oz-J[1])*k;J[2]+=wrapA(op-J[2])*k;J[3]+=(ovx-J[3])*k;J[4]+=(ovz-J[4])*k;J[5]+=(oy-J[5])*k;}
+     x+=c.pj[0];z+=c.pj[1];psi+=c.pj[2];vx+=c.pj[3];vz+=c.pj[4];y+=c.pj[5];}
     const f=q[9];
     if(c.kvx||c.kvz||c.kox||c.koz){
       c.kox=(c.kox||0)+(c.kvx||0)*dt;c.koz=(c.koz||0)+(c.kvz||0)*dt;c.kop=(c.kop||0)+(c.kr||0)*dt;
@@ -2641,8 +2654,13 @@ function netRemotes(now,dt){
     c.onRoad=!!(f&2);c.handbrake=!!(f&4);c.brake=f&8?1:0;c.boostT=f&16?0.3:0;c.slip=q[10];c.r=q[11];
     if(Math.hypot(c.x-PX[c.idx],c.z-PZ[c.idx])>25){const i=nearest(c.x,c.z,80);if(i>=0)c.idx=i;}   // big jump (respawn): find it on the course again
     locate(c);
+    // height: follow their real height carried forward (flying over a crest or a jump), never below the road;
+    // when they're driving on the road and it's close, sit exactly on it
     const gh=groundOf(c).h,grounded=!!(A.s[9]&1)&&(!B||!!(B.s[9]&1));
-    c.y=grounded?gh:Math.max(gh,y);
+    let ty=Math.max(gh,y);if(grounded&&ty-gh<0.5)ty=gh;
+    if(c.lastGr!==grounded&&isFinite(c.y)&&Math.abs(c.y-ty)<3)c.ey=c.y-ty;   // take-off / landing: ease into the new height instead of popping
+    c.lastGr=grounded;c.ey=(c.ey||0)*Math.exp(-dt*7);if(Math.abs(c.ey)<0.01)c.ey=0;
+    c.y=Math.max(gh,ty+c.ey);
     c.grounded=c.y<=gh+0.05;c.airT=c.grounded?0:0.5;
     c.latA=c.r*Math.hypot(c.vx,c.vz);
   }
@@ -2797,7 +2815,7 @@ function init(){
   $('loading').hidden=true;onResize();
   showHome();
   requestAnimationFrame(frame);
-  window.__phd={cars,get player(){return player},get audio(){return snd},get state(){return state},get LEN(){return LEN},get minRad(){return minRad},get DROP(){return DROP},get FINISH_S(){return FINISH_S},get CORNERS(){return CORNERS},get TRACK(){return TRACK},get JUMPS(){return JUMPS},get TUNNELS(){return TUNNELS},get RH(){return RH},startRace,startQuick,input,get scene(){return scene},garageSpin:(a)=>{garage.tt.rotation.y=a;garage.userT=99;},get collCount(){return collCount},placeOnTrack,get KS(){return KS},get S(){return S},get DSA(){return DSA},sim:(sec)=>{for(let t=0;t<sec;t+=1/60)tick(1/60);},shot:(p,l)=>{camera.position.set(p[0],p[1],p[2]);camera.lookAt(l[0],l[1],l[2]);camera.updateMatrixWorld();renderer.render(scene,camera);return renderer.domElement.toDataURL('image/png');},get camera(){return camera},get NET(){return NET},get countT(){return countT},get raceT(){return raceT},set noLoop(v){dbgNoLoop=v},get cars2(){return cars},get world(){return world},get PX(){return PX},get PZ(){return PZ},get RHB(){return RHB},get NX(){return NX},get NZ(){return NZ}};
+  window.__phd={cars,get player(){return player},get audio(){return snd},get state(){return state},get LEN(){return LEN},get minRad(){return minRad},get DROP(){return DROP},get FINISH_S(){return FINISH_S},get CORNERS(){return CORNERS},get TRACK(){return TRACK},get JUMPS(){return JUMPS},get TUNNELS(){return TUNNELS},get RH(){return RH},startRace,startQuick,input,get scene(){return scene},garageSpin:(a)=>{garage.tt.rotation.y=a;garage.userT=99;},get collCount(){return collCount},placeOnTrack,get KS(){return KS},get S(){return S},get DSA(){return DSA},sim:(sec)=>{for(let t=0;t<sec;t+=1/60)tick(1/60);},shot:(p,l)=>{camera.position.set(p[0],p[1],p[2]);camera.lookAt(l[0],l[1],l[2]);camera.updateMatrixWorld();renderer.render(scene,camera);return renderer.domElement.toDataURL('image/png');},get camera(){return camera},get NET(){return NET},netRemotes:(now,dt)=>netRemotes(now,dt),newCar:(o)=>newCar(o),groundAt:(x,z)=>{const c={x,z,idx:0,d:0,along:0};c.idx=nearest(x,z,80);locate(c);return groundOf(c).h;},get countT(){return countT},get raceT(){return raceT},set noLoop(v){dbgNoLoop=v},get cars2(){return cars},get world(){return world},get PX(){return PX},get PZ(){return PZ},get RHB(){return RHB},get NX(){return NX},get NZ(){return NZ}};
 }
 const fontsReady=(document.fonts&&document.fonts.load)?Promise.all([document.fonts.load('64px "Rammetto One"'),document.fonts.load('800 20px "M PLUS Rounded 1c"')]).catch(()=>{}):Promise.resolve();
 Promise.race([fontsReady,new Promise(r=>setTimeout(r,2500))]).then(()=>setTimeout(init,30));
