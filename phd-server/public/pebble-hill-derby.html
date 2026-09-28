@@ -1692,7 +1692,7 @@ function resetRace(){
   finishCount=0;raceT=0;countT=3.6;afterFinishT=0;resultsShown=false;finalShown=false;
   cars.forEach((c,k)=>{
     Object.assign(c,{finished:false,finishTime:0,place:0,pushes:0,pushTimer:0.3+Math.random()*0.2,driftCharge:0,boostT:0,airT:0,stuckT:0,brake:0,handbrake:false,pitch:0,roll:0,bounce:0,bounceV:0,assist:0,ax:0,fyf:0,fyr:0,draft:0,tow:null,towCD:2+Math.random()*4,passT:0,lane:c.baseLane});
-    const slot=c.slot!=null?c.slot:c===player?PLAYER_SLOT:(k<PLAYER_SLOT?k:k+1);placeOnTrack(c,GRID[slot][0],GRID[slot][1],0);if(c.remote){c.net=null;c.oldNet=null;c.ex=undefined;c.buf=[];}
+    const slot=c.slot!=null?c.slot:c===player?PLAYER_SLOT:(k<PLAYER_SLOT?k:k+1);placeOnTrack(c,GRID[slot][0],GRID[slot][1],0);if(c.remote){c.net=null;c.oldNet=null;c.ex=undefined;c.buf=[];c.kvx=c.kvz=c.kox=c.koz=c.kop=c.kr=0;c.gotHitT=c.hitDoneT=c.kickT=null;c.pendHit=null;}
   });
   world.gateArm.rotation.z=0;gateOpen=0;
   state='countdown';lastCount=4;
@@ -1833,15 +1833,22 @@ function collide(){
     else{let m=-1e9;for(const q of corners(A,a)){const t=q[0]*nx+q[1]*nz;if(t>m){m=t;px=q[0];pz=q[1];}}}
     const ma=A.dsg.mass,mb=B.dsg.mass,IA=ma*1.5*A.dsg.izf,IB=mb*1.5*B.dsg.izf;
     if(!ra){A.x-=nx*best*mb/(ma+mb);A.z-=nz*best*mb/(ma+mb);}if(!rb){B.x+=nx*best*ma/(ma+mb);B.z+=nz*best*ma/(ma+mb);}
+    // another player's car: if they already told us about this bump, it's been applied, don't hit twice
+    const R=ra?A:rb?B:null;if(R&&R.gotHitT!=null&&raceT-R.gotHitT<0.5)continue;
     const rax=px-A.x,raz=pz-A.z,rbx=px-B.x,rbz=pz-B.z;
     const vn=((B.vx+B.r*rbz)-(A.vx+A.r*raz))*nx+((B.vz-B.r*rbx)-(A.vz-A.r*rax))*nz;
     if(vn<0){
       const kA=raz*nx-rax*nz,kB=rbz*nx-rbx*nz;
       const j=-1.3*vn/(1/ma+1/mb+kA*kA/IA+kB*kB/IB);
-      if(!ra){A.vx-=j/ma*nx;A.vz-=j/ma*nz;}if(!rb){B.vx+=j/mb*nx;B.vz+=j/mb*nz;}
+      // both cars take their share, exactly like single player; another player's car gets its share shown here right away
+      // and sent to that player, whose own game applies it to their car
+      A.vx-=j/ma*nx;A.vz-=j/ma*nz;B.vx+=j/mb*nx;B.vz+=j/mb*nz;
       // hit spin: off-centre hits still rotate a car, but softened and capped per contact so a T-bone rarely spins it round
-      const SPIN_K=0.25,SPIN_CAP=0.35;
-      if(!ra)A.r-=clamp(SPIN_K*j*kA/IA,-SPIN_CAP,SPIN_CAP);if(!rb)B.r+=clamp(SPIN_K*j*kB/IB,-SPIN_CAP,SPIN_CAP);
+      const SPIN_K=0.25,SPIN_CAP=0.35,dA=-clamp(SPIN_K*j*kA/IA,-SPIN_CAP,SPIN_CAP),dB=clamp(SPIN_K*j*kB/IB,-SPIN_CAP,SPIN_CAP);
+      if(!ra)A.r+=dA;if(!rb)B.r+=dB;
+      if(R){const sg=R===A?-1:1,jx=sg*j*nx,jz=sg*j*nz,dr=R===A?dA:dB,m=R.dsg.mass;
+        R.kvx=(R.kvx||0)+jx/m;R.kvz=(R.kvz||0)+jz/m;R.kr=clamp((R.kr||0)+dr,-1.2,1.2);R.kickT=raceT;R.hitDoneT=raceT;
+        const P=R.pendHit||(R.pendHit={jx:0,jz:0,r:0});P.jx+=jx;P.jz+=jz;P.r+=dr;}
       A.hitT=B.hitT=0.8;
       if(-vn>1)collCount++;
       if((A===player||B===player)&&-vn>2){thud(Math.min(0.7,-vn/10));shake=Math.min(1,shake+0.15);}
@@ -2380,10 +2387,10 @@ function netMsg(m){
       if(m.lobby.state==='lobby')NET.info='';
       if(first||(!NET.inRace&&!NET.results&&menuScreen!=='lobby'&&state==='menu'))showScreen('lobby');
       lobbyRender();break;}
-    case 'race':case 'go':case 'snap':case 'fin':case 'gone':case 'results':case 'votes':case 'voted':
+    case 'race':case 'go':case 'snap':case 'fin':case 'gone':case 'results':case 'votes':case 'voted':case 'hit':
       // race traffic only counts while we're in a lobby: a message already on its way when you left is ignored
       if(!NET.lobby||NET.leaving)break;
-      if(m.t==='race')netRace(m);else if(m.t==='go')netGo(m);else if(m.t==='snap')netSnap(m);else if(m.t==='fin')netFin(m);else if(m.t==='gone')netGone(m.id);else netResults(m);
+      if(m.t==='hit')netHit(m);else if(m.t==='race')netRace(m);else if(m.t==='go')netGo(m);else if(m.t==='snap')netSnap(m);else if(m.t==='fin')netFin(m);else if(m.t==='gone')netGone(m.id);else netResults(m);
       break;
   }
 }
@@ -2570,6 +2577,7 @@ function netGo(m){
 }
 const r2=v=>Math.round(v*100)/100;
 function netTick(dt){
+  for(const c of cars)if(c.remote&&c.pendHit){const P=c.pendHit;c.pendHit=null;netSend({t:'hit',to:c.netId,j:[Math.round(P.jx),Math.round(P.jz)],r:Math.round(P.r*1000)/1000});}
   NET.sendT-=dt;if(NET.sendT>0||!player)return;NET.sendT=1/20;
   const c=player,f=(c.grounded?1:0)|(c.onRoad?2:0)|(c.handbrake?4:0)|(c.brake>0?8:0)|(c.boostT>0?16:0)|(c.finished?32:0);
   netSend({t:'st',s:[r2(c.x),r2(c.y),r2(c.z),Math.round(c.psi*1000)/1000,r2(c.vx),r2(c.vy),r2(c.vz),r2(c.s),Math.round(c.delta*1000)/1000,f,r2(c.slip||0),r2(c.r),r2(raceT),Math.round(NET.rtt||100)]});
@@ -2622,6 +2630,13 @@ function netRemotes(now,dt){
       x=e[0]+e[4]*t;z=e[2]+e[6]*t;y=e[1]+e[5]*t;vx=e[4];vz=e[6];vy=e[5];psi=e[3]+e[11]*t;
     }
     const f=q[9];
+    if(c.kvx||c.kvz||c.kox||c.koz){
+      c.kox=(c.kox||0)+(c.kvx||0)*dt;c.koz=(c.koz||0)+(c.kvz||0)*dt;c.kop=(c.kop||0)+(c.kr||0)*dt;
+      const k1=Math.exp(-dt*3);c.kvx*=k1;c.kvz*=k1;c.kr=(c.kr||0)*k1;
+      if(rt>c.kickT+(NET.lagEst||0.1)*0.6+0.03){const k2=Math.exp(-dt*5);c.kox*=k2;c.koz*=k2;c.kop*=k2;c.kvx*=k2;c.kvz*=k2;}  // their own reaction is in the playback now
+      if(Math.hypot(c.kox,c.koz)<0.01&&Math.hypot(c.kvx,c.kvz)<0.02){c.kox=c.koz=c.kvx=c.kvz=c.kop=c.kr=0;}
+      x+=c.kox;z+=c.koz;psi+=c.kop;vx+=c.kvx;vz+=c.kvz;
+    }
     c.x=x;c.z=z;c.psi=psi;c.vx=vx;c.vz=vz;c.vy=vy;c.delta=q[8];
     c.onRoad=!!(f&2);c.handbrake=!!(f&4);c.brake=f&8?1:0;c.boostT=f&16?0.3:0;c.slip=q[10];c.r=q[11];
     if(Math.hypot(c.x-PX[c.idx],c.z-PZ[c.idx])>25){const i=nearest(c.x,c.z,80);if(i>=0)c.idx=i;}   // big jump (respawn): find it on the course again
@@ -2631,6 +2646,14 @@ function netRemotes(now,dt){
     c.grounded=c.y<=gh+0.05;c.airT=c.grounded?0:0.5;
     c.latA=c.r*Math.hypot(c.vx,c.vz);
   }
+}
+function netHit(m){
+  if(!NET.inRace||!player||state!=='race')return;
+  const from=cars.find(k=>k.netId===m.from);if(!from)return;
+  if(from.hitDoneT!=null&&raceT-from.hitDoneT<0.5)return;           // we already resolved this same bump on our side
+  const mass=player.dsg.mass,jx=clamp(+m.j[0]||0,-30000,30000),jz=clamp(+m.j[1]||0,-30000,30000);
+  player.vx+=jx/mass;player.vz+=jz/mass;player.r=clamp(player.r+clamp(+m.r||0,-0.35,0.35),-3,3);player.hitT=0.8;from.gotHitT=raceT;
+  const v=Math.hypot(jx,jz)/mass;if(v>1){thud(Math.min(0.7,v/5));shake=Math.min(1,shake+0.15);}
 }
 function netFin(m){
   const c=cars.find(k=>k.netId===m.id);if(!c)return;
