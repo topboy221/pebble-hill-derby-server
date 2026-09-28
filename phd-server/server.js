@@ -373,6 +373,13 @@ function handle(c, m) {
     case 'st': return onState(c, m.s);
     case 'fin': return onFinish(c, m.time);
     case 'vote': return onVote(c, m.track);
+    case 'hit': {                                           // a bump: pass the push on to the car that was hit
+      const L = c.lobby; if (!L || L.state !== 'race' || !L.race.racers.has(c.id)) return;
+      const t = L.players.find(p => p.id === m.to); if (!t || t === c || !L.race.racers.has(t.id)) return;
+      const j = Array.isArray(m.j) ? m.j : [], jx = +j[0], jz = +j[1], r = +m.r;
+      if (!isFinite(jx) || !isFinite(jz) || Math.hypot(jx, jz) > 30000) return;
+      return send(t, { t: 'hit', from: c.id, j: [Math.round(jx), Math.round(jz)], r: isFinite(r) ? Math.max(-0.35, Math.min(0.35, r)) : 0 });
+    }
   }
 }
 
@@ -403,8 +410,10 @@ wss.on('connection', (ws, req) => {
   ws.on('pong', () => { ws._dead = false; });
   ws.on('message', (data) => {
     const now = Date.now(); c.lastSeen = now; if (now - c.since > 1000) { c.since = now; c.msgs = 0; }
-    if (++c.msgs > 60) return;                                    // flood guard
+    const over = ++c.msgs > 60;                                  // flood guard: past 60 a second, position/bump spam is dropped
+    if (c.msgs > 200) return;                                     // (but finishing, votes and leaving always get through)
     let m; try { m = JSON.parse(data); } catch (e) { return; }
+    if (over && m && (m.t === 'st' || m.t === 'hit' || m.t === 'ping')) return;
     if (m && typeof m.t === 'string') { const run = () => { try { handle(c, m); } catch (e) { console.error(e); } }; if (LAG) setTimeout(run, LAG); else run(); }
   });
   ws.on('close', () => {
