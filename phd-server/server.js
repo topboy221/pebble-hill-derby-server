@@ -426,7 +426,7 @@ wss.on('connection', (ws, req) => {
 setInterval(() => {
   const now = Date.now();
   for (const c of clients) if (now - c.lastSeen > 20000) { try { c.ws.terminate(); } catch (e) {} }
-  for (const ws of wss.clients) { if (ws._dead) { ws.terminate(); continue; } ws._dead = true; try { ws.ping(); } catch (e) {} }
+  for (const ws of wss.clients) { try { ws.ping(); } catch (e) {} }        // keep-alive for proxies (a slow reply is not a reason to drop anyone)
   for (const [k, P] of parked) if (P.until < now) parked.delete(k);
 }, 5000);
 setInterval(() => { const now = Date.now(); let ch = false; for (const t in sessions) if (sessions[t].exp < now) { delete sessions[t]; ch = true; } if (ch) save(SESS_FILE, sessions); }, 3600e3);
