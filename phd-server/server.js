@@ -13,7 +13,7 @@ const PORT = +process.env.PORT || 8080;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 // the game page: public/pebble-hill-derby.html (an older public/index.html still works as a fallback)
 const GAME_FILE = ['pebble-hill-derby.html', 'index.html'].map(f => path.join(__dirname, 'public', f)).find(f => fs.existsSync(f)) || path.join(__dirname, 'public', 'pebble-hill-derby.html');
-const TRACK_IDS = ['pebble', 'city'];           // keep in sync with TRACKS in the game
+const TRACK_IDS = ['pebble', 'city', 'nomahe'];           // keep in sync with TRACKS in the game
 const MAX_PLAYERS = 12;
 const TIMES = {                                   // seconds
   publicWait: 20,        // quick-join lobby: countdown once 2+ racers are in
@@ -416,7 +416,8 @@ wss.on('connection', (ws, req) => {
     if (over && m && (m.t === 'st' || m.t === 'hit' || m.t === 'ping')) return;
     if (m && typeof m.t === 'string') { const run = () => { try { handle(c, m); } catch (e) { console.error(e); } }; if (LAG) setTimeout(run, LAG); else run(); }
   });
-  ws.on('close', () => {
+  ws.on('close', (code, reason) => {
+    if (process.env.PHD_DEBUG) console.log('close', c.name, code, String(reason || ''), c.lobby && c.lobby.state);
     clients.delete(c);
     if (c.sid && c.name) parked.set(c.sid, { name: c.name, guest: c.guest, car: c.car, lobbyId: c.lobby && c.lobby.id, until: Date.now() + PARK_MS });
     leaveLobby(c); if (c.name && online.get(c.name.toLowerCase()) === c) online.delete(c.name.toLowerCase());
@@ -425,7 +426,7 @@ wss.on('connection', (ws, req) => {
 // heartbeat: drop connections that go quiet (phone went to sleep, network died) so they don't sit in lobbies as ghosts
 setInterval(() => {
   const now = Date.now();
-  for (const c of clients) if (now - c.lastSeen > 20000) { try { c.ws.terminate(); } catch (e) {} }
+  for (const c of clients) if (now - c.lastSeen > 20000) { if (process.env.PHD_DEBUG) console.log('drop silent', c.name, now - c.lastSeen); try { c.ws.terminate(); } catch (e) {} }
   for (const ws of wss.clients) { try { ws.ping(); } catch (e) {} }        // keep-alive for proxies (a slow reply is not a reason to drop anyone)
   for (const [k, P] of parked) if (P.until < now) parked.delete(k);
 }, 5000);
