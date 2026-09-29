@@ -1692,7 +1692,7 @@ function resetRace(){
   finishCount=0;raceT=0;countT=3.6;afterFinishT=0;resultsShown=false;finalShown=false;
   cars.forEach((c,k)=>{
     Object.assign(c,{finished:false,finishTime:0,place:0,pushes:0,pushTimer:0.3+Math.random()*0.2,driftCharge:0,boostT:0,airT:0,stuckT:0,brake:0,handbrake:false,pitch:0,roll:0,bounce:0,bounceV:0,assist:0,ax:0,fyf:0,fyr:0,draft:0,tow:null,towCD:2+Math.random()*4,passT:0,lane:c.baseLane});
-    const slot=c.slot!=null?c.slot:c===player?PLAYER_SLOT:(k<PLAYER_SLOT?k:k+1);placeOnTrack(c,GRID[slot][0],GRID[slot][1],0);if(c.remote){c.net=null;c.oldNet=null;c.ex=undefined;c.buf=[];c.kvx=c.kvz=c.kox=c.koz=c.kop=c.kr=0;c.pj=undefined;c.gotHitT=c.hitDoneT=c.kickT=null;c.pendHit=null;}
+    const slot=c.slot!=null?c.slot:c===player?PLAYER_SLOT:(k<PLAYER_SLOT?k:k+1);placeOnTrack(c,GRID[slot][0],GRID[slot][1],0);if(c.remote){c.net=null;c.oldNet=null;c.ex=undefined;c.buf=[];c.kvx=c.kvz=c.kox=c.koz=c.kop=c.kr=0;c.pj=undefined;c.fx=undefined;c.gotHitT=c.hitDoneT=c.kickT=null;c.pendHit=null;}
   });
   world.gateArm.rotation.z=0;gateOpen=0;
   state='countdown';lastCount=4;
@@ -1839,7 +1839,9 @@ function collide(){
     // otherwise we'd keep hitting the same stale car and fire each other off at silly speeds
     if(R&&R.hitDoneT!=null&&raceT-R.hitDoneT<0.4)continue;
     const rax=px-A.x,raz=pz-A.z,rbx=px-B.x,rbz=pz-B.z;
-    const vn=((B.vx+B.r*rbz)-(A.vx+A.r*raz))*nx+((B.vz-B.r*rbx)-(A.vz-A.r*rax))*nz;
+    // with another player's car, only its straight-line speed is trustworthy on our screen (its spin is a guess), and a mere brush isn't a bump
+    const vn=R?((B.vx-A.vx)*nx+(B.vz-A.vz)*nz):((B.vx+B.r*rbz)-(A.vx+A.r*raz))*nx+((B.vz-B.r*rbx)-(A.vz-A.r*rax))*nz;
+    if(R&&vn>-0.8)continue;
     if(vn<0){
       const kA=raz*nx-rax*nz,kB=rbz*nx-rbx*nz;
       const j=-1.3*vn/(1/ma+1/mb+kA*kA/IA+kB*kB/IB);
@@ -1849,7 +1851,7 @@ function collide(){
       // hit spin: off-centre hits still rotate a car, but softened and capped per contact so a T-bone rarely spins it round
       const SPIN_K=0.25,SPIN_CAP=0.35,dA=-clamp(SPIN_K*j*kA/IA,-SPIN_CAP,SPIN_CAP),dB=clamp(SPIN_K*j*kB/IB,-SPIN_CAP,SPIN_CAP);
       if(!ra)A.r+=dA;if(!rb)B.r+=dB;
-      if(R&&NET.dbg)(NET.log=NET.log||[]).push('hit vn '+vn.toFixed(2)+' j '+Math.round(j)+' n '+nx.toFixed(2)+','+nz.toFixed(2)+' best '+best.toFixed(2));
+      if(R&&NET.dbg)(NET.log=NET.log||[]).push('hit vn '+vn.toFixed(2)+' j '+Math.round(j)+' dv '+Math.round(j/ma*3.6)+'kmh A '+(ra?'remote':'me')+' vA '+Math.round(Math.hypot(A.vx,A.vz)*3.6)+' vB '+Math.round(Math.hypot(B.vx,B.vz)*3.6));
       if(R){const sg=R===A?-1:1,jx=sg*j*nx,jz=sg*j*nz,dr=R===A?dA:dB,m=R.dsg.mass;
         R.kvx=(R.kvx||0)+jx/m;R.kvz=(R.kvz||0)+jz/m;R.kr=clamp((R.kr||0)+dr,-1.2,1.2);R.kickT=raceT;R.hitDoneT=raceT;
         const P=R.pendHit||(R.pendHit={jx:0,jz:0,r:0});P.jx+=jx;P.jz+=jz;P.r+=dr;}
@@ -2596,7 +2598,7 @@ function netSnap(m){
     c.net={s:q,at:now,acc};c.netNew=true;
     // keep a short history of this car's updates, stamped with its race clock, to draw it smoothly a moment in the past
     const b=c.buf||(c.buf=[]);if(!b.length||q[12]>b[b.length-1].t){b.push({t:q[12],s:q});if(b.length>60)b.shift();}
-    if(NET.startLocal){const lag=(now-NET.startLocal)/1000-q[12];if(lag>-0.5&&lag<2)NET.lagEst=NET.lagEst==null?lag:lerp(NET.lagEst,lag,lag>NET.lagEst?0.25:0.03);}
+    if(NET.startLocal)netLag((now-NET.startLocal)/1000-q[12],now);
   }
 }
 // remote cars: their last update is already old by the time it reaches us (their half of the round trip + ours + server hold),
@@ -2613,10 +2615,21 @@ function netPredict(net,now){
 }
 // other players are drawn a fixed moment in the past (their network delay + a small buffer), smoothly between two real updates:
 // no guessing, so no wobble on jumps or overshoot on turns
+// how late updates arrive, and how much that varies (a bumpy phone connection needs a bigger cushion)
+// measured over the last ~3 s; updates that pile up while our own game was busy (a stall) don't count
+function netLag(lag,now){
+  if(!(lag>-0.5&&lag<2))return;
+  if(now-(NET.lastFrameAt??-1e9)>100)return;
+  const L=NET.lags||(NET.lags=[]);L.push(lag);if(L.length>60)L.shift();
+  const srt=L.slice().sort((a,b)=>a-b),p=f=>srt[Math.min(srt.length-1,Math.floor(f*srt.length))];
+  NET.lagEst=p(0.5);NET.lagHi=p(0.9);
+}
 function netRemotes(now,dt){
   if(!NET.startLocal)return;
-  const target=clamp((NET.lagEst!=null?NET.lagEst:0.1)+0.07,0.08,0.45);
-  NET.D=NET.D==null?target:lerp(NET.D,target,1-Math.exp(-dt*0.8));        // drift slowly so the playback never jumps
+  NET.lastFrameAt=now;
+  // playback cushion: enough for 9 in 10 updates to have arrived; it only ever changes very slowly (at most 5% time-stretch)
+  const target=clamp((NET.lagHi!=null?NET.lagHi:0.12)+0.03,0.08,0.5);
+  if(NET.D==null)NET.D=target;else{const m=0.05*dt;NET.D+=clamp(target-NET.D,-m,m);}
   const rt=(now-NET.startLocal)/1000-NET.D;
   for(const c of cars){
     if(!c.remote||!c.buf||!c.buf.length)continue;
@@ -2627,10 +2640,10 @@ function netRemotes(now,dt){
     if(B&&rt>=A.t&&rt<=B.t&&B.t-A.t<0.35&&Math.hypot(B.s[0]-A.s[0],B.s[2]-A.s[2])<25){
       const a=A.s,e=B.s,h=B.t-A.t,u=(rt-A.t)/h;q=u<0.5?a:e;
       x=hermite(a[0],a[4],e[0],e[4],h,u);z=hermite(a[2],a[6],e[2],e[6],h,u);y=hermite(a[1],a[5],e[1],e[5],h,u);
-      vx=dhermite(a[0],a[4],e[0],e[4],h,u);vz=dhermite(a[2],a[6],e[2],e[6],h,u);vy=lerp(a[5],e[5],u);
+      vx=lerp(a[4],e[4],u);vz=lerp(a[6],e[6],u);vy=lerp(a[5],e[5],u);   // its reported speed (the curve's slope can spike between odd updates)
       psi=a[3]+wrapA(e[3]-a[3])*u;rr=lerp(a[11],e[11],u);
-    }else{ // nothing to blend between (start, a gap, or a respawn): hold the nearest update, nudged along for at most 0.12 s
-      const S=(B&&rt>B.t)||!B?(B||A):A,e=S.s,t=clamp(rt-S.t,0,0.12);q=e;
+    }else{ // nothing to blend between yet (a late update, a gap, or a respawn): carry the latest one on its way for up to 0.3 s
+      const S=(B&&rt>B.t)||!B?(B||A):A,e=S.s,t=clamp(rt-S.t,0,0.3);q=e;
       x=e[0]+e[4]*t;z=e[2]+e[6]*t;y=e[1]+e[5]*t;vx=e[4];vz=e[6];vy=e[5];psi=e[3]+e[11]*t;rr=e[11];
     }
     // bring it forward to *now*: carry that smooth past position on along its own path for the playback delay.
@@ -2650,6 +2663,11 @@ function netRemotes(now,dt){
       if(Math.hypot(c.kox,c.koz)<0.01&&Math.hypot(c.kvx,c.kvz)<0.02){c.kox=c.koz=c.kvx=c.kvz=c.kop=c.kr=0;}
       x+=c.kox;z+=c.koz;psi+=c.kop;vx+=c.kvx;vz+=c.kvz;
     }
+    // last touch: the car on screen moves at its own speed and eases out any small jumps (late updates,
+    // corrections) over ~0.12 s, so it never shuffles back and forth
+    if(c.fx===undefined||Math.hypot(x-c.fx,z-c.fz)>6){c.fx=x;c.fz=z;c.fp=psi;}
+    else{const k=1-Math.exp(-dt/0.12);c.fx+=vx*dt;c.fz+=vz*dt;c.fp+=rr*dt;c.fx+=(x-c.fx)*k;c.fz+=(z-c.fz)*k;c.fp+=wrapA(psi-c.fp)*k;}
+    x=c.fx;z=c.fz;psi=c.fp;
     c.x=x;c.z=z;c.psi=psi;c.vx=vx;c.vz=vz;c.vy=vy;c.delta=q[8];
     c.onRoad=!!(f&2);c.handbrake=!!(f&4);c.brake=f&8?1:0;c.boostT=f&16?0.3:0;c.slip=q[10];c.r=q[11];
     if(Math.hypot(c.x-PX[c.idx],c.z-PZ[c.idx])>25){const i=nearest(c.x,c.z,80);if(i>=0)c.idx=i;}   // big jump (respawn): find it on the course again
@@ -2670,6 +2688,7 @@ function netHit(m){
   const from=cars.find(k=>k.netId===m.from);if(!from)return;
   if(from.hitDoneT!=null&&raceT-from.hitDoneT<0.5)return;           // we already resolved this same bump on our side
   const mass=player.dsg.mass,jx=clamp(+m.j[0]||0,-30000,30000),jz=clamp(+m.j[1]||0,-30000,30000);
+  if(NET.dbg)(NET.log=NET.log||[]).push('got hit '+Math.round(Math.hypot(jx,jz)/mass*3.6)+'kmh');
   player.vx+=jx/mass;player.vz+=jz/mass;player.r=clamp(player.r+clamp(+m.r||0,-0.35,0.35),-3,3);player.hitT=0.8;from.gotHitT=raceT;
   const v=Math.hypot(jx,jz)/mass;if(v>1){thud(Math.min(0.7,v/5));shake=Math.min(1,shake+0.15);}
 }
@@ -2815,7 +2834,7 @@ function init(){
   $('loading').hidden=true;onResize();
   showHome();
   requestAnimationFrame(frame);
-  window.__phd={cars,get player(){return player},get audio(){return snd},get state(){return state},get LEN(){return LEN},get minRad(){return minRad},get DROP(){return DROP},get FINISH_S(){return FINISH_S},get CORNERS(){return CORNERS},get TRACK(){return TRACK},get JUMPS(){return JUMPS},get TUNNELS(){return TUNNELS},get RH(){return RH},startRace,startQuick,input,get scene(){return scene},garageSpin:(a)=>{garage.tt.rotation.y=a;garage.userT=99;},get collCount(){return collCount},placeOnTrack,get KS(){return KS},get S(){return S},get DSA(){return DSA},sim:(sec)=>{for(let t=0;t<sec;t+=1/60)tick(1/60);},shot:(p,l)=>{camera.position.set(p[0],p[1],p[2]);camera.lookAt(l[0],l[1],l[2]);camera.updateMatrixWorld();renderer.render(scene,camera);return renderer.domElement.toDataURL('image/png');},get camera(){return camera},get NET(){return NET},netRemotes:(now,dt)=>netRemotes(now,dt),newCar:(o)=>newCar(o),groundAt:(x,z)=>{const c={x,z,idx:0,d:0,along:0};c.idx=nearest(x,z,80);locate(c);return groundOf(c).h;},get countT(){return countT},get raceT(){return raceT},set noLoop(v){dbgNoLoop=v},get cars2(){return cars},get world(){return world},get PX(){return PX},get PZ(){return PZ},get RHB(){return RHB},get NX(){return NX},get NZ(){return NZ}};
+  window.__phd={cars,get player(){return player},get audio(){return snd},get state(){return state},get LEN(){return LEN},get minRad(){return minRad},get DROP(){return DROP},get FINISH_S(){return FINISH_S},get CORNERS(){return CORNERS},get TRACK(){return TRACK},get JUMPS(){return JUMPS},get TUNNELS(){return TUNNELS},get RH(){return RH},startRace,startQuick,input,get scene(){return scene},garageSpin:(a)=>{garage.tt.rotation.y=a;garage.userT=99;},get collCount(){return collCount},placeOnTrack,get KS(){return KS},get S(){return S},get DSA(){return DSA},sim:(sec)=>{for(let t=0;t<sec;t+=1/60)tick(1/60);},shot:(p,l)=>{camera.position.set(p[0],p[1],p[2]);camera.lookAt(l[0],l[1],l[2]);camera.updateMatrixWorld();renderer.render(scene,camera);return renderer.domElement.toDataURL('image/png');},get camera(){return camera},get NET(){return NET},netLag:(l,n)=>netLag(l,n),netRemotes:(now,dt)=>netRemotes(now,dt),newCar:(o)=>newCar(o),groundAt:(x,z)=>{const c={x,z,idx:0,d:0,along:0};c.idx=nearest(x,z,80);locate(c);return groundOf(c).h;},get countT(){return countT},get raceT(){return raceT},set noLoop(v){dbgNoLoop=v},get cars2(){return cars},get world(){return world},get PX(){return PX},get PZ(){return PZ},get RHB(){return RHB},get NX(){return NX},get NZ(){return NZ}};
 }
 const fontsReady=(document.fonts&&document.fonts.load)?Promise.all([document.fonts.load('64px "Rammetto One"'),document.fonts.load('800 20px "M PLUS Rounded 1c"')]).catch(()=>{}):Promise.resolve();
 Promise.race([fontsReady,new Promise(r=>setTimeout(r,2500))]).then(()=>setTimeout(init,30));
