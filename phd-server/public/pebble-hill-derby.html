@@ -72,6 +72,8 @@ button:focus-visible{outline:3px solid var(--sky);outline-offset:3px}
 .modes .btn small{font-family:'M PLUS Rounded 1c',sans-serif;font-weight:800;font-size:11px;text-transform:none;color:#4a5170}
 .modes .btn[aria-pressed="true"]{background:var(--tomato);color:#fff;opacity:1}
 .modes .btn[aria-pressed="true"] small{color:#fff}
+@media (max-height:440px){#tracks .mm{gap:7px}#tracks .mmb{padding:7px 14px;font-size:16px}#tracks .modes .btn{padding:5px 12px;font-size:14px}}
+#tracks .mm{max-height:calc(100vh - var(--st) - var(--sb));overflow:auto;padding-bottom:6px}
 .reswrap{max-height:min(48vh,360px);overflow:auto;margin:4px 0 8px}
 .mmb{font-family:'Rammetto One','Arial Black',sans-serif;font-weight:400;font-size:20px;text-transform:uppercase;text-align:left;padding:12px 16px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;letter-spacing:.02em}
 .mmb small{font-family:'M PLUS Rounded 1c',sans-serif;font-weight:800;font-size:12px;text-transform:none;letter-spacing:0;color:#4a5170}
@@ -272,7 +274,8 @@ tr.me td{background:#fff3c4}
       </div>
       <button class="btn mmb go" data-track="pebble">Pebble Hill<small>3.5 km country descent · 3 jumps</small></button>
       <button class="btn mmb" data-track="city">City Scape<small>4.5 km at night · skyscraper drop · bumps · tunnel · 2 jumps</small></button>
-      <button class="btn mmb" data-track="nomahe">Nomahe<small>4.9 km canyon · rock split · dirt · tunnel jump · river jump</small></button>
+      <button class="btn mmb" data-track="nomahe">Nomahe<small>5.1 km canyon · rock split · dirt · tunnel jump · river jump</small></button>
+      <button class="btn mmb" data-track="tokiyama">Tokiyama<small>4.7 km at dusk · Tokyo Tower drop · 5 pinball obstacles</small></button>
     </nav>
   </div>
 
@@ -542,13 +545,24 @@ const paintCache=new Map();
 function paintMat(hex){if(paintCache.has(hex))return paintCache.get(hex);const m=std({color:hex,metalness:0.45,roughness:0.26});paintCache.set(hex,m);return m;}
 
 /* ================= TRACKS ================= */
-const DSN=2,HALFW=6,FLAT=HALFW+10,BLEND=28,CELL=24;
+const DSN=2,BLEND=28,CELL=24;let HALFW=6,FLAT=16;   // road half-width (per track) and the flat verge beside it
 let RAIL=HALFW+9,BARRIER=RAIL-1.05;   // barrier line + where a car's edge stops against it (set per track)
 const hkey=(cx,cz)=>(cx+2000)*8192+(cz+2000);
 let S0=0,I0=0;const PRE=124,PRE_GRADE=0.1;
 // per-sample course extras: SPL = lateral offset of the two branches where the road splits around a rock (0 = one road),
 // SURF = surface (1 = dirt), GAPS = [lip,landing] sample ranges with no road between (jumps over a ravine/river)
-let SPL=new Float32Array(1),SURF=new Uint8Array(1),GAPS=[],SPLMAX=0;
+let OBS=null;   // Tokiyama's moving obstacles (see OBSTACLES)
+let SPL=new Float32Array(1),SURF=new Uint8Array(1),GAPS=[],SPLMAX=0,BANK=new Float32Array(1);
+// banking: BANK = sideways slope of the road (height change per metre across, measured from the centre of the branch you are on)
+const bankAt=(i,d)=>{const b=BANK[i];if(!b)return 0;const sp=SPL[i],dc=sp>0?(d<0?-sp:sp):0;return b*clamp(d-dc,-(RAIL+1),RAIL+1);};
+// the same, blended smoothly between samples, plus the slopes a car needs: along the course (ds) and across it (dd)
+const BK={h:0,ds:0,dd:0};
+function bankInfo(i,along,d){
+  const j=along>=0?Math.min(NS-1,i+1):Math.max(0,i-1),f=Math.min(1,Math.abs(along)/DSA),b=BANK[i]+(BANK[j]-BANK[i])*f;
+  if(!b&&!BANK[j]){BK.h=BK.ds=BK.dd=0;return BK;}
+  const sp=SPL[i],dc=sp>0?(d<0?-sp:sp):0,r=d-dc,cl=RAIL+1,rc=clamp(r,-cl,cl);
+  BK.h=b*rc;BK.ds=(BANK[j]-BANK[i])/DSA*(along>=0?1:-1)*rc;BK.dd=Math.abs(r)<cl?b:0;return BK;}
+const DIRT_GRIP=0.55;   // dirt keeps 55% of tarmac grip
 const roadD=(i,d)=>{const sp=SPL[i];return sp>0?Math.abs(Math.abs(d)-sp):Math.abs(d);};   // lateral distance from the nearest road centre
 const inGap=i=>GAPS.some(g=>i>g[0]&&i<g[1]);
 // a course drawn like a turtle: [length m, turn degrees (+ = towards +x)] pieces → control points every 10 m
@@ -594,22 +608,48 @@ const TRACKS={
       const hill=(x,z)=>50*(1-smoothstep(110,300,Math.hypot(x-tc.x,z-tc.z)));
       return {natural:(x,z)=>base(x,z)+hill(x,z),road:base,hill};
     }},
-  nomahe:{id:'nomahe',name:'Nomahe',env:'canyon',rail:HALFW+0.8,railGap:0.05,preGrade:0.3,blurb:'Canyon · rock split · dirt · tunnel jump · river jump',
+  nomahe:{id:'nomahe',name:'Nomahe',env:'canyon',maxGrade:0.34,rail:HALFW+0.12,railGap:0.05,preGrade:0.3,blurb:'Canyon · rock split · dirt · tunnel jump · river jump',
     // off the top of a canyon rock, round the big rock (left or right), 1 km of dirt, a jump into the tunnel, a jump over the river to the flag
-    turtle:[[500,0],[150,45],[800,0],[110,-45],[40,0],[120,-35],[140,0],[180,70],[140,0],[180,-70],[130,0],[70,35],[300,0],[390,20],[390,-20],[360,-60],[1050,0]],
+    turtle:[[500,0],[150,45],[150,0],[125,35],[125,-35],[125,-35],[125,35],[150,0],[110,-45],[40,0],[120,-35],[140,0],[180,70],[140,0],[180,-70],[130,0],[70,35],[300,0],[390,20],[390,-20],[360,-60],[90,0],[120,45],[80,0],[140,-70],[80,0],[120,40],[160,0],[560,0]],
     drop:{end:520,extra:100,pow:1.2},
-    profile:[[0,560],[500,470],[650,452],[1450,352],[1560,340],[2560,235],[2800,207],[2860,200],[3640,130],[4000,95],[4790,22],[4900,9],[5050,5]],
+    profile:[[0,690],[500,600],[650,582],[1450,482],[1560,470],[2560,365],[2800,337],[2860,330],[3640,260],[3690,252],[4060,140],[4790,24],[4900,12],[5100,7],[5350,3]],
+    bank:{from:800,to:1300,k:40,max:0.2},
     split:{from:650,to:1450,ease:150,off:38},dirt:[1560,2560],
     hills:{from:2925,to:3600,A:2.6,len:75},tunnelS:[2860,3640],
-    gaps:[{lip:2810,len:46,depth:9,kick:4.2,klen:24},{lip:4792,len:56,floor:-2.5,kick:3.6,klen:24}],
+    gaps:[{lip:2814,len:34,depth:5,shape:0.9,kick:3.1,klen:24},{lip:4792,len:56,floor:-2.5,shape:0.8,kick:3.6,klen:24}],
     jumpList:[{s:1830,h:1.5,len:18,kind:'dirt'},{s:2150,h:1.5,len:18,kind:'dirt'},{s:2460,h:1.5,len:18,kind:'dirt'}],
-    finishAt:4900,river:{s:4820,half:24,bank:52},
-    makeNatural:(b,tc,RB)=>canyonNatural(b,RB)}
+    finishAt:5100,river:{s:4820,half:24,bank:52},
+    makeNatural:(b,tc,RB)=>canyonNatural(b,RB)},
+  tokiyama:{id:'tokiyama',name:'Tokiyama',env:'tokyo',halfW:9,rail:9.8,railGap:0.05,preGrade:0.22,maxGrade:0.3,blurb:'Dusk · Tokyo Tower drop · pinball obstacles',
+    // off the top of Tokyo Tower, down through a neon city built on a hillside, past five pinball-machine obstacles
+    turtle:[[450,0],[140,40],[370,0],[150,-60],[120,0],[150,50],[300,0],[140,-45],[240,-15],[30,0],[360,0],[160,55],[150,0],[160,-55],[400,0],[180,40],[130,-30],[140,-40],[200,0],[160,50],[150,0],[150,-35],[550,0]],
+    drop:{end:520,extra:150,pow:1.25},
+    profile:[[0,720],[500,640],[1000,562],[1700,466],[2090,420],[2300,388],[2450,366],[2920,300],[3080,278],[3320,245],[4000,150],[4700,34],[4980,22]],
+    gaps:[{lip:3080,len:44,depth:12,shape:0.3,kick:3.2,klen:24}],
+    finishAt:4700,
+    obstacles:{
+      spinners:[{s:680,d:0,L:8.6,w:1.25},{s:770,d:-4.4,L:4.3,w:-1.7},{s:770,d:4.4,L:4.3,w:1.7},{s:860,d:0,L:8.6,w:-1.1}],
+      cannons:[{s:1450,side:1,period:3.1,ph:0.4},{s:1530,side:-1,period:3.1,ph:1.5},{s:1610,side:1,period:3.1,ph:2.6}],
+      maze:{from:2100,len:200},
+      fans:[{s:2320,side:-1},{s:2385,side:1}],
+      hammers:[{ds:13,L:9,w:-1.75,ph:0},{ds:31,L:9,w:-1.75,ph:1.9}]},
+    makeNatural:(b,tc,RB)=>tokyoNatural(b,RB)}
 };
+// Tokiyama ground: a city built on the hillside, following the course; flat blocks, lifting gently away from it
+function tokyoNatural(b,RB){
+  const cs=40,gx0=b.minX-760,gz0=b.minZ-760,nx=Math.ceil((b.maxX-b.minX+1520)/cs)+1,nz=Math.ceil((b.maxZ-b.minZ+1520)/cs)+1,G=new Float32Array(nx*nz);
+  for(let j=0;j<nz;j++)for(let i=0;i<nx;i++){const x=gx0+i*cs,z=gz0+j*cs;let ws=0,hs=0,bd=1e18,bh=0;
+    for(let k=I0;k<NS;k+=3){const dx=x-PX[k],dz=z-PZ[k],d2=dx*dx+dz*dz;if(d2<bd){bd=d2;bh=RB[k];}if(d2<90000){const w=1/(d2+900);ws+=w;hs+=w*RB[k];}}
+    G[j*nx+i]=ws>0?hs/ws:bh;}
+  const grid=(x,z)=>{const fx=clamp((x-gx0)/cs,0,nx-1.001),fz=clamp((z-gz0)/cs,0,nz-1.001),i=Math.floor(fx),j=Math.floor(fz),u=fx-i,v=fz-j;
+    return lerp(lerp(G[j*nx+i],G[j*nx+i+1],u),lerp(G[(j+1)*nx+i],G[(j+1)*nx+i+1],u),v);};
+  const base=(x,z)=>Math.max(4,grid(x,z))+2*Math.sin(x*0.011)*Math.cos(z*0.013)+1*Math.sin(x*0.03+z*0.02);
+  return {natural:base,road:base,hill:()=>0};
+}
 // Nomahe ground: the land follows the course, canyon walls rise in terraces away from it (none round the start rock,
 // lower at the river), a mountain sits over the tunnel and the river cuts a gorge across the course
 function canyonNatural(b,RB){
-  const T=TRACK,cs=40,gx0=b.minX-560,gz0=b.minZ-560,nx=Math.ceil((b.maxX-b.minX+1120)/cs)+1,nz=Math.ceil((b.maxZ-b.minZ+1120)/cs)+1;
+  const T=TRACK,cs=40,gx0=b.minX-760,gz0=b.minZ-760,nx=Math.ceil((b.maxX-b.minX+1520)/cs)+1,nz=Math.ceil((b.maxZ-b.minZ+1520)/cs)+1;
   const G=new Float32Array(nx*nz),DE=new Float32Array(nx*nz),SB=new Float32Array(nx*nz),DT=new Float32Array(nx*nz);
   const t0=TUNNELS[0]||{i0:-1,i1:-2};
   for(let j=0;j<nz;j++)for(let i=0;i<nx;i++){const x=gx0+i*cs,z=gz0+j*cs;let ws=0,hs=0,bd=1e18,bh=0,de=1e9,sb=0,dt=1e9;
@@ -618,12 +658,12 @@ function canyonNatural(b,RB){
     const q=j*nx+i;G[q]=ws>0?hs/ws:bh;DE[q]=Math.max(0,de);SB[q]=sb;DT[q]=Math.sqrt(dt);}
   const bil=(A,x,z)=>{const fx=clamp((x-gx0)/cs,0,nx-1.001),fz=clamp((z-gz0)/cs,0,nz-1.001),i=Math.floor(fx),j=Math.floor(fz),u=fx-i,v=fz-j;
     return lerp(lerp(A[j*nx+i],A[j*nx+i+1],u),lerp(A[(j+1)*nx+i],A[(j+1)*nx+i+1],u),v);};
-  const wallH=s=>130*smoothstep(380,820,s)*(1-0.62*smoothstep(4300,4760,s));
+  const wallH=s=>130*smoothstep(380,820,s)*(1-0.62*smoothstep(4300,4760,s))*(1-smoothstep(4850,4960,s));   // open desert after the river
   const terr=t=>{const n=5,f=t*n,k=Math.floor(f),u=f-k;return Math.min(1,(k+smoothstep(0.3,0.72,u))/n);};   // cliff bands with ledges
   let rv=null;
   if(T.river){const ri=Math.round((S0+T.river.s)/DSA);rv={x:PX[ri],z:PZ[ri],tx:TX[ri],tz:TZ[ri],half:T.river.half,bank:T.river.bank};}
   const base=(x,z)=>{let h=Math.max(4,bil(G,x,z))+2.5*Math.sin(x*0.013)*Math.cos(z*0.011)+1.2*Math.sin(x*0.031+z*0.02);
-    const de=bil(DE,x,z),sb=bil(SB,x,z),t=clamp((de-14)/115,0,1);
+    const de=bil(DE,x,z),sb=bil(SB,x,z),t=clamp((de-24)/110,0,1);
     const n=0.88+0.12*Math.sin(x*0.02+z*0.013)*Math.cos(z*0.017-x*0.006);
     h+=wallH(sb)*terr(t)*n;
     h+=58*(1-smoothstep(70,240,bil(DT,x,z)));                                          // the mountain the tunnel goes through
@@ -634,7 +674,7 @@ function canyonNatural(b,RB){
 }
 function smoothArr(a,r,passes){for(let p=0;p<passes;p++){const t=a.slice();for(let i=0;i<a.length;i++){let s=0,n=0;for(let k=-r;k<=r;k++){s+=t[clamp(i+k,0,a.length-1)];n++;}a[i]=s/n;}}}
 function loadTrack(T){
-  TRACK=T;RAIL=T.rail||HALFW+9;BARRIER=RAIL-(T.railGap!=null?T.railGap:1.05);
+  TRACK=T;HALFW=T.halfW||6;FLAT=HALFW+10;RAIL=T.rail||HALFW+9;BARRIER=RAIL-(T.railGap!=null?T.railGap:1.05);
   const mk=cp=>{const c=new THREE.CatmullRomCurve3(cp.map(p=>new THREE.Vector3(p[0],0,p[1])),false,'centripetal');c.arcLengthDivisions=8000;return c;};
   let cp=T.turtle?turtleCP(T.turtle):T.cp,curve=mk(cp);
   if(T.targetLen){const k=T.targetLen/curve.getLength();cp=cp.map(p=>[p[0]*k,p[1]*k]);curve=mk(cp);}
@@ -651,6 +691,9 @@ function loadTrack(T){
   for(let i=0;i<NS;i++){const a=Math.max(0,i-1),b=Math.min(NS-1,i+1);let tx=PX[b]-PX[a],tz=PZ[b]-PZ[a];const l=Math.hypot(tx,tz)||1;TX[i]=tx/l;TZ[i]=tz/l;NX[i]=TZ[i];NZ[i]=-TX[i];}
   {const raw=new Float32Array(NS);for(let i=1;i<NS-1;i++)raw[i]=wrapA(Math.atan2(TX[i+1],TZ[i+1])-Math.atan2(TX[i-1],TZ[i-1]))/(2*DSA);
    for(let i=0;i<NS;i++){let s=0,n=0;for(let k=-4;k<=4;k++){const j=i+k;if(j>=0&&j<NS){s+=raw[j];n++;}}KS[i]=s/n;}}
+  BANK=new Float32Array(NS);
+  if(T.bank){const q=T.bank;for(let i=0;i<NS;i++){const sv=rs(i);if(sv<q.from-20||sv>q.to+20)continue;const env=smoothstep(q.from-20,q.from+40,sv)*(1-smoothstep(q.to-40,q.to+20,sv));BANK[i]=clamp(-KS[i]*q.k,-q.max,q.max)*env;}
+    smoothArr(BANK,8,2);}
   const bounds={minX:1e9,maxX:-1e9,minZ:1e9,maxZ:-1e9};for(let i=I0;i<NS;i++){bounds.minX=Math.min(bounds.minX,PX[i]);bounds.maxX=Math.max(bounds.maxX,PX[i]);bounds.minZ=Math.min(bounds.minZ,PZ[i]);bounds.maxZ=Math.max(bounds.maxZ,PZ[i]);}
   TUNNELS=[];let tc={x:0,z:0};
   if(T.tunnelS){const a=Math.round((S0+T.tunnelS[0])/DSA),b2=Math.round((S0+T.tunnelS[1])/DSA);TUNNELS.push({i0:a,i1:b2});tc={x:PX[(a+b2)>>1],z:PZ[(a+b2)>>1]};}
@@ -662,7 +705,7 @@ function loadTrack(T){
   }else{ // road elevation: follow the land, smoothed, always downhill
     NT=T.makeNatural(bounds,tc);for(let i=I0;i<NS;i++)RHB[i]=NT.road(PX[i],PZ[i]);smoothArr(H,14,3);
   }
-  for(let i=I0+1;i<NS;i++){RHB[i]=Math.min(RHB[i],RHB[i-1]-0.025*DSA);RHB[i]=Math.max(RHB[i],RHB[i-1]-0.2*DSA);}
+  for(let i=I0+1;i<NS;i++){RHB[i]=Math.min(RHB[i],RHB[i-1]-0.025*DSA);RHB[i]=Math.max(RHB[i],RHB[i-1]-(T.maxGrade||0.2)*DSA);}
   for(let i=I0;i<NS;i++)RHB[i]=Math.max(RHB[i],3+(NS-1-i)*DSA*0.025);
   const RBASE=RHB.slice();
   RAMP_END=0;
@@ -681,11 +724,11 @@ function loadTrack(T){
   }
   if(T.hills){ // tunnel roller-coaster: sharp crests and dips
     const q=T.hills;for(let i=0;i<NS;i++){const sv=rs(i);if(sv<q.from||sv>q.to)continue;const env=smoothstep(q.from,q.from+30,sv)*(1-smoothstep(q.to-30,q.to,sv));
-      RHB[i]+=env*q.A*Math.sin(2*Math.PI*(sv-q.from)/q.len);}
+      const ph=(sv-q.from)/q.len;if(Math.floor(ph)%2===0)RHB[i]+=env*q.A*Math.sin(2*Math.PI*ph);}   // a hill on every other wave, flat between
   }
   if(T.gaps)for(const g of T.gaps){ // a dip with no road: over a ravine, or down to the river bed
     const a=Math.round((S0+g.lip)/DSA),b2=Math.round((S0+g.lip+g.len)/DSA);GAPS.push([a,b2]);
-    for(let i=a+1;i<b2;i++){const u=(i-a)/(b2-a),w=Math.pow(Math.sin(Math.PI*u),0.45),line=lerp(RHB[a],RHB[b2],u);
+    for(let i=a+1;i<b2;i++){const u=(i-a)/(b2-a),w=Math.pow(Math.sin(Math.PI*u),g.shape||0.45),line=lerp(RHB[a],RHB[b2],u);
       RHB[i]=lerp(line,g.floor!=null?g.floor:line-g.depth,w);}
   }
   RH.set(RHB);
@@ -709,6 +752,7 @@ function loadTrack(T){
   minRad=1e9;for(let i=0;i<NS;i++)minRad=Math.min(minRad,1/Math.max(1e-6,Math.abs(KS[i])));
   CORNERS=[];
   {let inC=false,lastE=-1e9;for(let i=0;i<NS;i++){const k=Math.abs(KS[i]);if(!inC&&k>1/120){inC=true;let pk=0;for(let j=i;j<Math.min(NS,i+45);j++)pk=Math.max(pk,Math.abs(KS[j]));if(S[i]-lastE>160&&rs(i)>120)CORNERS.push({i,dir:Math.sign(KS[Math.min(NS-1,i+10)]),peak:pk});lastE=S[i];}else if(inC&&k<1/180)inC=false;}}
+  OBS=T.obstacles?makeObstacles(T.obstacles):null;
   HASH.clear();
   for(let i=0;i<NS;i++){const k=hkey(Math.floor(PX[i]/CELL),Math.floor(PZ[i]/CELL));if(!HASH.has(k))HASH.set(k,[]);HASH.get(k).push(i);}
 }
@@ -731,13 +775,15 @@ function terrainInfo(x,z){
   let dist=Math.abs(dx*NX[i]+dz*NZ[i]),inner=0;
   const sp=SPL[i];if(sp>0){if(dist<sp)inner=sp-dist;dist=Math.abs(dist-sp);}   // split: distance from the nearer branch
   if((i===0&&along<0)||(i===NS-1&&along>0))dist=Math.hypot(dx,dz);
-  const road=interp(RHB,i,along)-0.12;
+  const road=interp(RHB,i,along)-0.12+bankAt(i,dx*NX[i]+dz*NZ[i]);
   TI.dist=dist;TI.i=i;TI.inner=inner;
-  let h=dist<=FLAT?road:road+(nat-road)*smoothstep(FLAT,FLAT+BLEND,dist);
-  if(TRACK.env==='canyon'){
+  const cny=TRACK.env==='canyon',FL=cny?FLAT+8:FLAT;   // canyon: a wider flat verge so the rising walls never reach over the (banked) road
+  let h=dist<=FL?road:road+(nat-road)*smoothstep(FL,FL+BLEND,dist);
+  if(cny){
+    if(inner>0)h=road-0.3;                                                                   // under the big rock: keep level with the road
     if(inTunnel(i)&&dist<FLAT+BLEND){h=Math.max(nat,road+16);TI.tun=dist<RAIL+4;}                                   // solid rock over the tunnel
   }
-  if(TRACK.env==='city'){
+  if(TRACK.env==='city'||TRACK.env==='tokyo'){
     const el=interp(ELEV,i,along);if(el>3)h=lerp(h,nat,smoothstep(3,8,el));          // bridges: leave the ground below the deck
   }
   TI.h=h;return TI;
@@ -759,6 +805,44 @@ const texRoad=canvasTex(256,512,(x,w,h)=>{
   x.fillStyle='#e8e6de';x.fillRect(cw+8,0,5,h);x.fillRect(w-cw-13,0,5,h);
   x.fillRect(w/2-3,40,6,170);x.fillRect(w/2-3,296,6,170);
 },false,true);
+// worn desert tarmac (Nomahe): gritty sun-bleached asphalt, cracks and patches, dusty edges, no paint or kerbs
+const texCanyonRoad=canvasTex(256,1024,(x,w,h)=>{
+  x.fillStyle='#5d5a57';x.fillRect(0,0,w,h);
+  const r=rng(47);
+  for(let k=0;k<26000;k++){const v=r();x.fillStyle=v<0.3?'rgba(255,245,230,.10)':v<0.6?'rgba(20,18,16,.16)':v<0.8?'rgba(150,120,90,.12)':'rgba(0,0,0,.22)';const s2=r()<0.85?1:2;x.fillRect(r()*w,r()*h,s2,s2);}   // grit
+  for(let k=0;k<5;k++){x.fillStyle='rgba(30,28,26,'+(0.12+r()*0.1)+')';const pw=40+r()*90,ph=50+r()*160;x.fillRect(r()*(w-pw),r()*(h-ph),pw,ph);}           // repair patches
+  for(const cx of [0.3,0.7]){const g=x.createLinearGradient(w*(cx-0.1),0,w*(cx+0.1),0);g.addColorStop(0,'rgba(25,23,21,0)');g.addColorStop(0.5,'rgba(25,23,21,.22)');g.addColorStop(1,'rgba(25,23,21,0)');x.fillStyle=g;x.fillRect(w*(cx-0.1),0,w*0.2,h);}   // worn wheel lines
+  x.lineCap='round';x.lineJoin='round';
+  for(let k=0;k<11;k++){ // cracks: wandering dark lines with little branches
+    let px=w*(0.12+r()*0.76),py=r()*h,a=r()*Math.PI*2;x.strokeStyle='rgba(18,16,14,.75)';x.lineWidth=1+r()*1.4;x.beginPath();x.moveTo(px,py);
+    const n=6+Math.floor(r()*10);for(let j=0;j<n;j++){a+=(r()-0.5)*1.2;px+=Math.cos(a)*(6+r()*10);py+=Math.sin(a)*(6+r()*10);x.lineTo(px,py);
+      if(r()<0.25){x.moveTo(px,py);const b=a+(r()<0.5?1:-1)*(0.8+r()*0.6);x.lineTo(px+Math.cos(b)*(5+r()*8),py+Math.sin(b)*(5+r()*8));x.moveTo(px,py);}}
+    x.stroke();}
+  const eg=(x0,x1)=>{const g=x.createLinearGradient(x0,0,x1,0);g.addColorStop(0,'rgba(196,152,104,.75)');g.addColorStop(1,'rgba(196,152,104,0)');x.fillStyle=g;x.fillRect(Math.min(x0,x1),0,Math.abs(x1-x0),h);};
+  eg(0,26);eg(w,w-26);   // sand blown onto the edges
+  for(let k=0;k<500;k++){x.fillStyle=r()<0.5?'rgba(205,165,115,.5)':'rgba(120,90,60,.4)';const sx=r()<0.5?r()*30:w-r()*30;x.fillRect(sx,r()*h,1+r()*2,1+r()*2);}
+},false,true);
+// Tokiyama road: dark indigo playfield tarmac, neon edge lines, pinball arrow inserts and rollover lights (one tile = 48 m)
+const texTokyoRoad=canvasTex(256,2048,(x,w,h)=>{
+  x.fillStyle='#34304a';x.fillRect(0,0,w,h);
+  const r=rng(61);
+  for(let k=0;k<40000;k++){const v=r();x.fillStyle=v<0.35?'rgba(255,255,255,.07)':v<0.7?'rgba(0,0,0,.14)':'rgba(120,90,200,.12)';x.fillRect(r()*w,r()*h,1+r()*1.5,1+r()*1.5);}
+  for(const cx of [0.3,0.7]){const g=x.createLinearGradient(w*(cx-0.08),0,w*(cx+0.08),0);g.addColorStop(0,'rgba(10,8,20,0)');g.addColorStop(0.5,'rgba(10,8,20,.25)');g.addColorStop(1,'rgba(10,8,20,0)');x.fillStyle=g;x.fillRect(w*(cx-0.08),0,w*0.16,h);}
+  x.fillStyle='#ff3fb0';x.fillRect(5,0,5,h);x.fillStyle='#3fe8ff';x.fillRect(w-10,0,5,h);                // neon edge lines
+  x.fillStyle='rgba(255,255,255,.55)';for(let y=0;y<h;y+=128){x.fillRect(w/3-2,y+20,4,70);x.fillRect(2*w/3-2,y+20,4,70);}   // lane dashes
+  // arrow inserts (three chevrons) in the middle lane, glowing orange-yellow
+  for(const [yy,col] of [[260,'#ffd23f'],[1290,'#ff8a3f']]){for(let k=0;k<3;k++){const y=yy+k*70;x.fillStyle=col;x.beginPath();x.moveTo(w/2,y);x.lineTo(w/2+42,y+46);x.lineTo(w/2+28,y+56);x.lineTo(w/2,y+22);x.lineTo(w/2-28,y+56);x.lineTo(w/2-42,y+46);x.closePath();x.fill();
+    x.strokeStyle='rgba(20,10,30,.8)';x.lineWidth=3;x.stroke();}}
+  // rollover lights: rows of round inserts in the outer lanes
+  const cols=['#ff3fb0','#3fe8ff','#ffe14a','#7dff6a'];
+  for(let k=0;k<6;k++){const y=700+k*60,c=cols[k%4];for(const cx of [w*0.16,w*0.84]){x.fillStyle='rgba(0,0,0,.5)';x.beginPath();x.arc(cx,y,15,0,Math.PI*2);x.fill();x.fillStyle=c;x.beginPath();x.arc(cx,y,11,0,Math.PI*2);x.fill();x.fillStyle='rgba(255,255,255,.6)';x.beginPath();x.arc(cx-3,y-3,4,0,Math.PI*2);x.fill();}}
+  // a star insert
+  const star=(cx,cy,R,c)=>{x.fillStyle=c;x.beginPath();for(let k=0;k<10;k++){const a=-Math.PI/2+k*Math.PI/5,rr=k%2?R*0.45:R;x.lineTo(cx+Math.cos(a)*rr,cy+Math.sin(a)*rr);}x.closePath();x.fill();x.strokeStyle='rgba(20,10,30,.8)';x.lineWidth=3;x.stroke();};
+  star(w/2,1750,40,'#ff3fb0');star(w*0.2,1900,18,'#3fe8ff');star(w*0.8,1600,18,'#ffe14a');
+},false,true);
+// neon sign textures for the rooftops (pinball words)
+function neonTex(text,col){return canvasTex(512,160,(x,w,h)=>{x.fillStyle='#120a22';x.fillRect(0,0,w,h);x.strokeStyle=col;x.lineWidth=8;x.strokeRect(10,10,w-20,h-20);
+  x.font='900 84px "Rammetto One","Arial Black",sans-serif';x.textAlign='center';x.textBaseline='middle';x.shadowColor=col;x.shadowBlur=24;x.fillStyle='#ffffff';x.fillText(text,w/2,h/2+4);x.shadowBlur=0;x.lineWidth=3;x.strokeStyle=col;x.strokeText(text,w/2,h/2+4);});}
 // packed dirt road (Nomahe): ochre earth, two worn wheel tracks, stones, rough edges
 const texDirt=canvasTex(256,512,(x,w,h)=>{
   x.fillStyle='#b98352';x.fillRect(0,0,w,h);
@@ -926,14 +1010,20 @@ function instancedPair(geo,mat,n,ol){
   return m;
 }
 const CANYON_BANDS=['#c8683e','#d98a57','#b4532f','#e0a877','#a64a2b','#d3794a','#e6b98c','#bd5d36'].map(c=>new THREE.Color(c));
+let DUSK_BG=null;
 function buildWorld(){
-  clearWorld();WG=new THREE.Group();scene.add(WG);const city=TRACK.env==='city',canyon=TRACK.env==='canyon';applyEnv(city);setEnvMaps(city?ENVN:ENV);
+  clearWorld();WG=new THREE.Group();scene.add(WG);const city=TRACK.env==='city',canyon=TRACK.env==='canyon',tokyo=TRACK.env==='tokyo';applyEnv(city);setEnvMaps(city?ENVN:ENV);
+  if(tokyo){ // dusk over Tokyo: violet sky, a low orange sun, pink haze
+    if(!DUSK_BG)DUSK_BG=canvasTex(4,256,(x,w,h)=>{const g=x.createLinearGradient(0,0,0,h);g.addColorStop(0,'#241a55');g.addColorStop(0.28,'#5b2f86');g.addColorStop(0.43,'#c2458f');g.addColorStop(0.5,'#ff7a7a');g.addColorStop(0.54,'#ffb36e');g.addColorStop(0.58,'#d99ab8');g.addColorStop(1,'#b58cc0');x.fillStyle=g;x.fillRect(0,0,w,h);});
+    scene.background=DUSK_BG;ambL.color.set(0xffd6ee);ambL.intensity=0.36;hemiL.color.set(0xb9a6ff);hemiL.groundColor.set(0xff9a7a);hemiL.intensity=0.3;
+    sunLight.color.set(0xffb27a);sunLight.intensity=0.66;SUN_DIR.set(-0.62,0.3,0.72).normalize();
+    scene.fog.color.set(0xc79ac4);scene.fog.near=380;scene.fog.far=1900;fogU.fogColor.value.copy(scene.fog.color);fogU.fogNear.value=380;fogU.fogFar.value=1900;}
   if(canyon){sunLight.color.set(0xffe0b8);sunLight.intensity=0.68;hemiL.color.set(0xf2e4d0);hemiL.groundColor.set(0xa0643e);scene.fog.color.set(0xecd9c2);fogU.fogColor.value.copy(scene.fog.color);}
   let minX=1e9,maxX=-1e9,minZ=1e9,maxZ=-1e9;
   for(let i=0;i<NS;i++){minX=Math.min(minX,PX[i]);maxX=Math.max(maxX,PX[i]);minZ=Math.min(minZ,PZ[i]);maxZ=Math.max(maxZ,PZ[i]);}
-  minX-=380;maxX+=380;minZ-=340;maxZ+=260;
+  if(TRACK.env==='canyon'){minX-=700;maxX+=700;minZ-=600;maxZ+=700;}else{minX-=380;maxX+=380;minZ-=340;maxZ+=260;}
   // ---- terrain
-  const step=city||canyon?10:9,nx=Math.ceil((maxX-minX)/step)+1,nz=Math.ceil((maxZ-minZ)/step)+1;
+  const step=city||canyon||tokyo?10:9,nx=Math.ceil((maxX-minX)/step)+1,nz=Math.ceil((maxZ-minZ)/step)+1;
   const pos=new Float32Array(nx*nz*3),col=new Float32Array(nx*nz*3),hs=new Float32Array(nx*nz),ds=new Float32Array(nx*nz),tun=new Uint8Array(nx*nz);
   for(let j=0;j<nz;j++)for(let i=0;i<nx;i++){const x=minX+i*step,z=minZ+j*step;const t=terrainInfo(x,z);const k=j*nx+i;hs[k]=t.h;ds[k]=t.dist;tun[k]=t.tun?1:0;pos[k*3]=x;pos[k*3+1]=t.h;pos[k*3+2]=z;}
   const C=hex=>new THREE.Color(hex);
@@ -945,6 +1035,15 @@ function buildWorld(){
     const hx=hs[j*nx+Math.min(nx-1,i+1)]-hs[j*nx+Math.max(0,i-1)],hz=hs[Math.min(nz-1,j+1)*nx+i]-hs[Math.max(0,j-1)*nx+i];
     const slope=Math.hypot(hx,hz)/(2*step);
     const n1=0.5+0.5*Math.sin(x*0.021+Math.cos(z*0.017)*2.2)*Math.cos(z*0.013-x*0.004);
+    if(tokyo){ // city blocks: pale pavement, darker streets, pocket parks
+      const n2=0.5+0.5*Math.sin(x*0.05)*Math.cos(z*0.045);
+      if(h<2.4)tmp.copy(cSand);
+      else if(ds[k]<FLAT-0.5)tmp.set('#b9b3c9');
+      else if(slope>0.55)tmp.set('#8f8aa0');
+      else if(n1>0.8&&n2>0.55)tmp.set('#7dbb6a').lerp(cGL,n2*0.3);
+      else tmp.set('#a9a3bb').lerp(C('#cfc8dc'),n2);
+      col[k*3]=tmp.r;col[k*3+1]=tmp.g;col[k*3+2]=tmp.b;continue;
+    }
     if(canyon){ // layered sandstone: colour bands by height, ledges and floor in sand, green only by the river
       const band=CANYON_BANDS[((Math.floor((h+Math.sin(x*0.013)*3+Math.cos(z*0.011)*3)/9)%CANYON_BANDS.length)+CANYON_BANDS.length)%CANYON_BANDS.length];
       if(h<1.5)tmp.copy(cCSand).lerp(cCGreen,0.5);
@@ -982,15 +1081,15 @@ function buildWorld(){
   const terrain=new THREE.Mesh(tg,toon(0xffffff,{vertexColors:true}));terrain.receiveShadow=true;WG.add(terrain);
 
   // ---- sea
-  const sea=new THREE.Mesh(new THREE.PlaneGeometry(14000,14000),std({color:city?0x1d4a72:canyon?0x2c6f6a:0x2f7fb8,metalness:0.1,roughness:0.12,envMapIntensity:canyon?0.45:0.9}));sea.rotation.x=-Math.PI/2;sea.position.set(0,0,1400);WG.add(sea);
-  const foam=new THREE.Mesh(new THREE.PlaneGeometry(14000,14000),new THREE.MeshBasicMaterial({color:city?0x2a4a6a:canyon?0x4f9a8c:0x8fd0ee,transparent:true,opacity:0.3,depthWrite:false}));foam.rotation.x=-Math.PI/2;foam.position.set(0,0.35,1400);WG.add(foam);world.foam=foam;
+  const sea=new THREE.Mesh(new THREE.PlaneGeometry(14000,14000),std({color:city?0x1d4a72:canyon?0x2c6f6a:tokyo?0x5a4f9a:0x2f7fb8,metalness:0.1,roughness:0.12,envMapIntensity:canyon?0.45:0.9}));sea.rotation.x=-Math.PI/2;sea.position.set(0,0,1400);WG.add(sea);
+  const foam=new THREE.Mesh(new THREE.PlaneGeometry(14000,14000),new THREE.MeshBasicMaterial({color:city?0x2a4a6a:canyon?0x4f9a8c:tokyo?0xff9ec7:0x8fd0ee,transparent:true,opacity:0.3,depthWrite:false}));foam.rotation.x=-Math.PI/2;foam.position.set(0,0.35,1400);WG.add(foam);world.foam=foam;
 
   // ---- road
   function ribbon(i0,i1,off0,off1,yOff,arr,vScale,mat){
     const n=i1-i0+1,P=new Float32Array(n*6),U=new Float32Array(n*4),I=[];
     for(let k=0;k<n;k++){const i=i0+k,o0=typeof off0==='function'?off0(i):off0,o1=typeof off1==='function'?off1(i):off1;   // offsets may vary along the course
-      P[k*6]=PX[i]+NX[i]*o0;P[k*6+1]=arr[i]+yOff;P[k*6+2]=PZ[i]+NZ[i]*o0;
-      P[k*6+3]=PX[i]+NX[i]*o1;P[k*6+4]=arr[i]+yOff;P[k*6+5]=PZ[i]+NZ[i]*o1;
+      P[k*6]=PX[i]+NX[i]*o0;P[k*6+1]=arr[i]+yOff+bankAt(i,o0);P[k*6+2]=PZ[i]+NZ[i]*o0;
+      P[k*6+3]=PX[i]+NX[i]*o1;P[k*6+4]=arr[i]+yOff+bankAt(i,o1);P[k*6+5]=PZ[i]+NZ[i]*o1;
       U[k*4]=0;U[k*4+1]=S[i]/vScale;U[k*4+2]=1;U[k*4+3]=S[i]/vScale;
       if(k<n-1){const a=k*2;I.push(a,a+1,a+2,a+1,a+3,a+2);}
     }
@@ -1000,26 +1099,36 @@ function buildWorld(){
   const iWood=RAMP_END>0?Math.round((S0+RAMP_END)/DSA):0;   // Pebble Hill: the whole run-up and start ramp are wooden decking
   if(iWood>0)ribbon(0,iWood,HALFW,-HALFW,0.03,RHB,8,toon(0xffffff,{map:texWood}));
   if(city){const sw=toon(0xa4a8b2,{map:texWalk});ribbon(0,NS-1,RAIL+0.2,HALFW,0.08,RHB,4,sw);ribbon(0,NS-1,-HALFW,-RAIL-0.2,0.08,RHB,4,sw);}
-  if(!canyon)ribbon(iWood,NS-1,HALFW,-HALFW,0.03,RHB,8,toon(0xffffff,{map:texRoad}));
+  if(!canyon&&!tokyo)ribbon(iWood,NS-1,HALFW,-HALFW,0.03,RHB,8,toon(0xffffff,{map:texRoad}));
   else{ // Nomahe: tarmac / dirt pieces, none over the gaps, two branches round the rock
-    const mR=toon(0xffffff,{map:texRoad}),mD=toon(0xffffff,{map:texDirt});
+    const mR=toon(0xffffff,{map:tokyo?texTokyoRoad:texCanyonRoad}),mD=toon(0xffffff,{map:texDirt});
     const key=i=>inGap(i)?-1:SURF[i];
     const piece=(a,b,mat)=>{ // one surface run, split into single-road and two-branch parts
       let c0=a;while(c0<b){let c1=c0;const two=SPL[c0]>0;while(c1<b&&(SPL[c1+1]>0)===two)c1++;const e=Math.min(b,c1+1);
-        if(!two)ribbon(c0,e,HALFW,-HALFW,0.03,RHB,8,mat);
-        else{const s0=Math.max(a,c0-1);ribbon(s0,e,i=>SPL[i]+HALFW,i=>SPL[i]-HALFW,0.03,RHB,8,mat);ribbon(s0,e,i=>-SPL[i]+HALFW,i=>-SPL[i]-HALFW,0.036,RHB,8,mat);}
+        const vs=tokyo?48:mat===mR?16:8,HW=tokyo?RAIL+0.05:HALFW;   // Tokiyama's playfield runs right up to the rails
+        if(!two)ribbon(c0,e,HW,-HW,0.03,RHB,vs,mat);
+        else{const s0=Math.max(a,c0-1);ribbon(s0,e,i=>SPL[i]+HALFW,i=>SPL[i]-HALFW,0.03,RHB,vs,mat);ribbon(s0,e,i=>-SPL[i]+HALFW,i=>-SPL[i]-HALFW,0.036,RHB,vs,mat);}
         c0=c1+1;}};
     let a=0;while(a<NS-1){let b=a;const k=key(a);while(b<NS-1&&key(b+1)===k)b++;
       if(k>=0){const e=b<NS-1&&key(b+1)===-1?b:Math.min(NS-1,b+1);piece(a,e,k?mD:mR);}
       a=b+1;}
     // Armco along the outer edges and along both sides of the rock, broken over the gaps
-    const railM=toon(0xffffff,{map:texRail,side:THREE.DoubleSide});
+    const railM=tokyo?toon(0xe4ddf0,{side:THREE.DoubleSide}):toon(0xffffff,{map:texRail,side:THREE.DoubleSide});
     const railRun=(ok,off)=>{let a2=0;while(a2<NS){while(a2<NS&&!ok(a2))a2++;let b=a2;while(b<NS-1&&ok(b+1))b++;if(b>a2+1){
-        const P=[],U=[],I=[];for(let i=a2;i<=b;i++){const o=off(i),x=PX[i]+NX[i]*o,z=PZ[i]+NZ[i]*o;P.push(x,RHB[i]-0.35,z,x,RHB[i]+0.8,z);U.push(S[i]/2,0,S[i]/2,1);if(i<b){const q=(i-a2)*2;I.push(q,q+2,q+1,q+1,q+2,q+3);}}
+        const P=[],U=[],I=[];for(let i=a2;i<=b;i++){const o=off(i),x=PX[i]+NX[i]*o,z=PZ[i]+NZ[i]*o,y=RHB[i]+bankAt(i,o);P.push(x,y-0.35,z,x,y+0.8,z);U.push(S[i]/2,0,S[i]/2,1);if(i<b){const q=(i-a2)*2;I.push(q,q+2,q+1,q+1,q+2,q+3);}}
         const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.setIndex(I);g.computeVertexNormals();WG.add(new THREE.Mesh(g,railM));}
       a2=b+1;}};
+    const cannonHole=(i,sg)=>OBS&&OBS.cannons.some(o=>Math.abs(i-o.i)*DSA<3.2);   // the balls roll through gaps in the rails
     const noGap=i=>!GAPS.some(g=>i>g[0]-1&&i<g[1]);
-    for(const sg of [1,-1]){railRun(noGap,i=>sg*(SPL[i]+RAIL));railRun(i=>SPL[i]>RAIL&&noGap(i),i=>sg*(SPL[i]-RAIL));}
+    for(const sg of [1,-1]){railRun(i=>noGap(i)&&!cannonHole(i,sg),i=>sg*(SPL[i]+RAIL));railRun(i=>SPL[i]>RAIL&&noGap(i),i=>sg*(SPL[i]-RAIL));}
+    if(tokyo){ // pinball neon: a glowing strip along the top of each rail, pink on the left, cyan on the right
+      for(const sg of [1,-1]){const m=new THREE.MeshBasicMaterial({color:sg>0?0xff3fb0:0x3fe8ff});
+        let a2=0;const ok=i=>noGap(i)&&!cannonHole(i,sg);while(a2<NS){while(a2<NS&&!ok(a2))a2++;let b=a2;while(b<NS-1&&ok(b+1))b++;if(b>a2+1){
+          const P=[],I=[];for(let i=a2;i<=b;i++){for(const [dd,dy] of [[-0.09,0.84],[0.09,0.84],[0.09,0.95],[-0.09,0.95]]){const o=sg*(RAIL+dd);P.push(PX[i]+NX[i]*o,RHB[i]+dy,PZ[i]+NZ[i]*o);}
+            if(i<b){const q=(i-a2)*4;for(let e=0;e<4;e++){const p0=q+e,p1=q+(e+1)%4;I.push(p0,p0+4,p1,p1,p0+4,p1+4);}}}
+          const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setIndex(I);WG.add(new THREE.Mesh(g,m));}
+          a2=b+1;}}
+    }
   }
   function rail(sg){
     const off=sg*RAIL,P=[],U=[],I=[];
@@ -1028,7 +1137,7 @@ function buildWorld(){
     WG.add(new THREE.Mesh(g,toon(0xffffff,{map:city?texBarrier:texRail,side:THREE.DoubleSide})));
   }
   if(city){rail(1);rail(-1);}
-  else if(!canyon){ // Pebble Hill: the barriers are walls of square hay bales, two high with staggered joints
+  else if(!canyon&&!tokyo){ // Pebble Hill: the barriers are walls of square hay bales, two high with staggered joints
     const BL=2.4,BD=1.2,BH=0.9,off=BARRIER+0.03+BD/2,list=[];
     // lowest point of the terrain mesh around a spot (its triangles span 9 m, so check the surrounding grid corners)
     const meshLow=(x,z)=>{const gi=Math.floor((x-minX)/step),gj=Math.floor((z-minZ)/step);let m=1e9;
@@ -1051,13 +1160,13 @@ function buildWorld(){
       const t=R();hm.setColorAt(k,col.setRGB(1-t*0.1,0.97-t*0.12,0.9-t*0.2));});
     hm.instanceColor.needsUpdate=true;hm.castShadow=true;hm.receiveShadow=true;
   }
-  const plateMat=city||canyon?std({map:texTread,color:0xffffff,metalness:0.45,roughness:0.38,envMapIntensity:1.4,emissive:0x1c2028}):null;
-  const sideMat=city||canyon?std({color:0x9aa1a9,metalness:0.5,roughness:0.4,side:THREE.DoubleSide,emissive:0x15181e}):toon(0x9a6a3e,{side:THREE.DoubleSide});
+  const plateMat=city||canyon||tokyo?std({map:texTread,color:0xffffff,metalness:0.45,roughness:0.38,envMapIntensity:1.4,emissive:0x1c2028}):null;
+  const sideMat=city||canyon||tokyo?std({color:0x9aa1a9,metalness:0.5,roughness:0.4,side:THREE.DoubleSide,emissive:0x15181e}):toon(0x9a6a3e,{side:THREE.DoubleSide});
   const dirtSide=toon(0x9a6a40,{side:THREE.DoubleSide}),woodSide=toon(0x8a5a33,{side:THREE.DoubleSide}),dirtKick=toon(0xffffff,{map:texDirt});
   for(const [i0,i1,kind] of JUMPS){
     const ie=kind==='big'?i1:i1+1;   // a gap kicker ends at its lip
     if(kind==='dirt')ribbon(i0,ie,HALFW,-HALFW,0.05,RH,8,dirtKick);
-    else if(canyon){ribbon(i0,ie,HALFW,-HALFW,0.05,RH,8,toon(0xffffff,{map:texWood}));ribbon(i1-1,i1,HALFW,-HALFW,0.075,RH,2,toon(0xffffff,{map:texHazard}));}   // timber kicker
+    else if(canyon&&!tokyo){ribbon(i0,ie,HALFW,-HALFW,0.05,RH,8,toon(0xffffff,{map:texWood}));ribbon(i1-1,i1,HALFW,-HALFW,0.075,RH,2,toon(0xffffff,{map:texHazard}));}   // timber kicker
     else if(city){ // steel kicker: diamond tread plate, hazard-striped lip, steel side plates
       ribbon(i0,ie,HALFW,-HALFW,0.05,RH,3,plateMat);
       ribbon(i1-1,i1,HALFW,-HALFW,0.075,RH,2,toon(0xffffff,{map:texHazard}));
@@ -1065,11 +1174,11 @@ function buildWorld(){
     for(const sg of [1,-1]){
       const P=[],I=[];for(let i=i0;i<=ie;i++){const x=PX[i]+NX[i]*HALFW*sg,z=PZ[i]+NZ[i]*HALFW*sg;P.push(x,RHB[i]-0.1,z,x,RH[i]+0.05,z);if(i<ie){const a=(i-i0)*2;I.push(a,a+2,a+1,a+1,a+2,a+3);}}
       const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setIndex(I);g.computeVertexNormals();
-      WG.add(new THREE.Mesh(g,kind==='dirt'?dirtSide:canyon?woodSide:sideMat));
+      WG.add(new THREE.Mesh(g,kind==='dirt'?dirtSide:canyon&&!tokyo?woodSide:sideMat));
     }
     if(kind==='big'){ // steel front face of the kicker, down into the gap
       const P=[];for(const [d,y] of [[HALFW,RH[i1]+0.05],[-HALFW,RH[i1]+0.05],[-HALFW,RHB[i1]-9],[HALFW,RHB[i1]-9]])P.push(PX[i1]+NX[i1]*d,y,PZ[i1]+NZ[i1]*d);
-      const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setIndex([0,1,2,0,2,3]);g.computeVertexNormals();WG.add(new THREE.Mesh(g,canyon?woodSide:sideMat));
+      const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setIndex([0,1,2,0,2,3]);g.computeVertexNormals();WG.add(new THREE.Mesh(g,canyon&&!tokyo?woodSide:sideMat));
     }
   }
   // finish strip
@@ -1116,14 +1225,14 @@ function buildWorld(){
     let pi=0;
     for(const [list,left] of [[chevL,true],[chevR,false]]){
       const mm=instancedPair(boardG,new THREE.MeshBasicMaterial({map:arrowTex(left),side:THREE.DoubleSide}),list.length,0);
-      list.forEach((i,k)=>{const sg=left?-1:1;const d=sg*(city||canyon?RAIL+0.7:RAIL+0.3);const x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d;Q.setFromEuler(E.set(0,Math.atan2(TX[i],TZ[i])+Math.PI,0));
+      list.forEach((i,k)=>{const sg=left?-1:1;const d=sg*(city||canyon||tokyo?RAIL+0.7:RAIL+0.3);const x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d;Q.setFromEuler(E.set(0,Math.atan2(TX[i],TZ[i])+Math.PI,0));
         M.compose(V.set(x,RHB[i]+1.7,z),Q,One);mm.setMatrixAt(k,M);M.compose(V.set(x,RHB[i]+0.7,z),Q,One);posts.setMatrixAt(pi++,M);});
     }
     const bt={150:boardTex(150),100:boardTex(100),50:boardTex(50)},bg=new THREE.PlaneGeometry(1.0,1.25);
     for(const c of CORNERS){
       if(c.peak<1/85)continue;
       for(const dist of [150,100,50]){
-        const i=c.i-Math.round(dist/DSA);if(i<5||inGap(i))continue;const sg=-c.dir;const d=sg*(city||canyon?RAIL+0.7:RAIL+0.3);
+        const i=c.i-Math.round(dist/DSA);if(i<5||inGap(i))continue;const sg=-c.dir;const d=sg*(city||canyon||tokyo?RAIL+0.7:RAIL+0.3);
         const x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d;
         const b=new THREE.Mesh(bg,new THREE.MeshBasicMaterial({map:bt[dist],side:THREE.DoubleSide}));b.position.set(x,RHB[i]+1.9,z);b.rotation.y=Math.atan2(TX[i],TZ[i])+Math.PI;WG.add(b);
         Q.setFromEuler(E.set(0,b.rotation.y,0));M.compose(V.set(x,RHB[i]+0.7,z),Q,One);posts.setMatrixAt(pi++,M);
@@ -1134,8 +1243,8 @@ function buildWorld(){
   // ---- trees
   const trees=[];
   const okSpot=(x,z,minD)=>{const t=terrainInfo(x,z);return (t.dist>minD&&t.h>2.8)?t.h:null;};
-  for(let i=10;i<(canyon?0:NS);i+=3){for(const sg of [1,-1]){if(R()<(city?0.06:0.4)){const d=sg*(FLAT+3+R()*24);const x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d;const h=okSpot(x,z,FLAT+2);if(h!==null)trees.push([x,h,z]);}}}
-  for(let k=0;k<6000&&trees.length<(canyon?0:city?500:1600);k++){
+  for(let i=10;i<(canyon||tokyo?0:NS);i+=3){for(const sg of [1,-1]){if(R()<(city?0.06:0.4)){const d=sg*(FLAT+3+R()*24);const x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d;const h=okSpot(x,z,FLAT+2);if(h!==null)trees.push([x,h,z]);}}}
+  for(let k=0;k<6000&&trees.length<(canyon||tokyo?0:city?500:1600);k++){
     const x=minX+40+R()*(maxX-minX-80),z=minZ+40+R()*(maxZ-minZ-80);
     const f=0.5+0.5*Math.sin(x*0.018+1)*Math.cos(z*0.015);if(R()>f*1.25)continue;
     if(city&&hillAt(x,z)<5)continue;
@@ -1156,7 +1265,7 @@ function buildWorld(){
   }
   // ---- houses
   const houses=[];
-  if(!city&&!canyon){
+  if(!city&&!canyon&&!tokyo){
   const tryHouse=(x,z,minD)=>{const t=terrainInfo(x,z);if(t.dist<minD||t.h<1.8)return false;for(const h of houses){if((h[0]-x)**2+(h[2]-z)**2<160)return false;}houses.push([x,t.h,z,R()*Math.PI*2]);return true;};
   for(let k=0;k<300&&houses.length<12;k++){const a=R()*Math.PI*2,r=30+R()*60;tryHouse(PX[I0]+Math.sin(a)*r,PZ[I0]-20+Math.cos(a)*r*0.8,FLAT+5);}
   for(let k=0;k<700&&houses.length<40;k++){const i=clamp(NS-1-Math.floor(R()*220),0,NS-1);const d=(R()<0.5?-1:1)*(FLAT+6+R()*55);tryHouse(PX[i]+NX[i]*d+(R()-0.5)*10,PZ[i]+NZ[i]*d+(R()-0.5)*10,FLAT+5);}
@@ -1179,7 +1288,7 @@ function buildWorld(){
   }
   }
   // ---- landmarks
-  if(!city&&!canyon){
+  if(!city&&!canyon&&!tokyo){
     const wx=-260,wz=420;const t=terrainInfo(wx,wz);
     const g=new THREE.Group();g.position.set(wx,t.h,wz);g.rotation.y=0.6;WG.add(g);
     part(g,GEO.taper,0xefe8da,[0,6,0],[2.6,12,2.6],null,0.05);
@@ -1197,9 +1306,9 @@ function buildWorld(){
   // ---- crowd
   {
     const ppl=[];
-    for(let i=Math.round(FINISH_S/DSA)-45;i<Math.min(NS-2,Math.round(FINISH_S/DSA)+14);i++){for(const sg of [1,-1]){if((city&&ELEV[i]>1.5)||inGap(i)||GAPS.some(g=>Math.abs(i-g[1])<3))continue;if(R()<0.8){const d=sg*(RAIL+1.3+R()*3.5);ppl.push([PX[i]+NX[i]*d,RHB[i]-0.12,PZ[i]+NZ[i]*d,R()*6.28]);}}}
+    for(let i=Math.round(FINISH_S/DSA)-45;i<Math.min(NS-2,Math.round(FINISH_S/DSA)+14);i++){for(const sg of [1,-1]){if(((city||tokyo)&&ELEV[i]>1.5)||inGap(i)||GAPS.some(g=>Math.abs(i-g[1])<3))continue;if(R()<0.8){const d=sg*(RAIL+1.3+R()*3.5);ppl.push([PX[i]+NX[i]*d,RHB[i]-0.12,PZ[i]+NZ[i]*d,R()*6.28]);}}}
     if(!city)for(let i=Math.round((S0+24)/DSA);i<Math.round((S0+70)/DSA);i++){for(const sg of [1,-1]){if(R()<0.6){const d=sg*(RAIL+1.3+R()*2.5);ppl.push([PX[i]+NX[i]*d,RHB[i]-0.12,PZ[i]+NZ[i]*d,R()*6.28]);}}}
-    for(const c of CORNERS){if(c.peak<1/70)continue;for(let i=c.i;i<c.i+30;i++){const sg=-c.dir;if(city&&(ELEV[i]>1.5||inTunnel(i)))continue;if(canyon&&(inTunnel(i)||SPL[i]>0||inGap(i)))continue;if(R()<0.55){const d=sg*(RAIL+1.5+R()*3);ppl.push([PX[i]+NX[i]*d,RHB[i]-0.12,PZ[i]+NZ[i]*d,R()*6.28]);}}}
+    for(const c of CORNERS){if(c.peak<1/70)continue;for(let i=c.i;i<c.i+30;i++){const sg=-c.dir;if((city||tokyo)&&(ELEV[i]>1.5||inTunnel(i)||inGap(i)))continue;if(canyon&&(inTunnel(i)||SPL[i]>0||inGap(i)))continue;if(R()<0.55){const d=sg*(RAIL+1.5+R()*3);ppl.push([PX[i]+NX[i]*d,RHB[i]-0.12,PZ[i]+NZ[i]*d,R()*6.28]);}}}
     const n=ppl.length,col=new THREE.Color();
     const bm=instancedPair(new THREE.CylinderGeometry(0.3,0.4,1,8),toon(0xffffff,{}),n,0),hm=instancedPair(GEO.sphereLo,toon(0xffffff,{}),n,0.015);
     const shirt=['#c93b33','#f2c230','#2f6fb8','#3e8a4c','#6f5a8a','#e98bb4','#f0f0ea','#ef6a1a'],skin=['#f6d2b3','#e8b48a','#c08458','#80543a'];
@@ -1210,9 +1319,9 @@ function buildWorld(){
   }
   // ---- clouds
   {
-    const cm=city?toon(0x6a7390,{fog:false,emissive:0x1a2236,emissiveIntensity:1}):toon(0xffffff,{fog:false,emissive:0x3a4a60,emissiveIntensity:0.3});world.clouds=[];
+    const cm=city?toon(0x6a7390,{fog:false,emissive:0x1a2236,emissiveIntensity:1}):tokyo?toon(0xffc2dc,{fog:false,emissive:0x6a3060,emissiveIntensity:0.6}):toon(0xffffff,{fog:false,emissive:0x3a4a60,emissiveIntensity:0.3});world.clouds=[];
     for(let k=0;k<(city?10:20);k++){const g=new THREE.Group();const n=4+Math.floor(R()*3);for(let j=0;j<n;j++){const s=20+R()*18;const m=new THREE.Mesh(GEO.sphereLo,cm);m.position.set((j-n/2)*s*0.9,(R()-0.3)*8,(R()-0.5)*14);m.scale.set(s,s*0.7,s);g.add(m);}
-      g.position.set(minX-300+R()*(maxX-minX+600),(city?RHB[I0]+170:420)+R()*200,minZ-300+R()*(maxZ-minZ+900));WG.add(g);world.clouds.push(g);}
+      g.position.set(minX-300+R()*(maxX-minX+600),(city?RHB[I0]+170:canyon||tokyo?RHB[0]+160:420)+R()*200,minZ-300+R()*(maxZ-minZ+900));WG.add(g);world.clouds.push(g);}
   }
   // ---- distant mountains
   {
@@ -1221,10 +1330,15 @@ function buildWorld(){
     if(canyon){ // flat-topped mesas and buttes on the horizon
       const mm2=toon(0xc98559,{fog:false}),tm=toon(0xe0ad80,{fog:false});
       for(let k=0;k<34;k++){const a=k/34*Math.PI*2+R()*0.1,rr=1700+R()*900,w=150+R()*380,h=110+R()*260;const x=cx+Math.sin(a)*rr,z=cz+Math.cos(a)*rr*1.3;
+        let near=1e9;for(let i=0;i<NS;i+=10)near=Math.min(near,Math.hypot(x-PX[i],z-PZ[i]));if(near<w+450)continue;   // never on top of the course
         const m=new THREE.Mesh(new THREE.CylinderGeometry(w*0.82,w,h,7),mm2);m.position.set(x,h/2-30,z);m.rotation.y=R()*3;WG.add(m);
         const t=new THREE.Mesh(new THREE.CylinderGeometry(w*0.84,w*0.84,6,7),tm);t.position.set(x,h-30+2,z);t.rotation.y=m.rotation.y;WG.add(t);}
     }
-    for(let k=0;k<(canyon?0:28);k++){const a=k/28*Math.PI*2;const sx=Math.sin(a),sz=Math.cos(a);if(sz>0.45)continue;
+    if(tokyo){ // Mount Fuji on the horizon, a ring of blue hills
+      const fx=cx-1400,fz=cz-2300,fm=new THREE.Mesh(new THREE.ConeGeometry(1,1,24),toon(0x6f7fb8,{fog:false}));fm.scale.set(1500,900,1500);fm.position.set(fx,380,fz);WG.add(fm);
+      const fs=new THREE.Mesh(new THREE.ConeGeometry(1,1,24),toon(0xf6f2ff,{fog:false}));fs.scale.set(1500*0.33,900*0.33,1500*0.33);fs.position.set(fx,380+450-150+2,fz);WG.add(fs);
+    }
+    for(let k=0;k<(canyon||tokyo?0:28);k++){const a=k/28*Math.PI*2;const sx=Math.sin(a),sz=Math.cos(a);if(sz>0.45)continue;
       const rr=1900+R()*600,h=600+R()*600,w=420+R()*300;const x=cx+sx*rr*0.9,z=cz+sz*rr;
       const m=new THREE.Mesh(new THREE.ConeGeometry(1,1,7),mm);m.scale.set(w,h,w);m.position.set(x,h/2-40,z);m.rotation.y=R()*3;WG.add(m);
       const s=new THREE.Mesh(new THREE.ConeGeometry(1,1,7),sm);s.scale.set(w*0.32,h*0.32,w*0.32);s.position.set(x,h-40-h*0.16+2,z);s.rotation.y=m.rotation.y;WG.add(s);}
@@ -1242,6 +1356,158 @@ function buildWorld(){
   }
   if(city)buildCity(minX,maxX,minZ,maxZ);
   if(canyon)buildCanyon(minX,maxX,minZ,maxZ);
+  if(tokyo)buildTokyo(minX,maxX,minZ,maxZ);
+}
+/* ---------- Tokiyama scenery: bridges, Tokyo Tower, neon city, sakura, torii, and the pinball obstacles ---------- */
+function buildTokyo(minX,maxX,minZ,maxZ){
+  const M=new THREE.Matrix4(),Q=new THREE.Quaternion(),E=new THREE.Euler(),V=new THREE.Vector3(),Sv=new THREE.Vector3(),col=new THREE.Color();
+  const head=i=>Math.atan2(TX[i],TZ[i]);
+  const ORANGE=0xf05a28,WHITE=0xf4f0ea,PINK=0xff3fb0,CYAN=0x3fe8ff,YEL=0xffd23f;
+  // bridge decks + red-and-white piers wherever the road runs above the city
+  {
+    const P=[],I=[];let segStart=-1;
+    const addSeg=(a,b)=>{const base=P.length/3;
+      for(let i=a;i<=b;i++){for(const [d,dy] of [[RAIL+0.7,0.08],[RAIL+0.7,-1.6],[-RAIL-0.7,-1.6],[-RAIL-0.7,0.08]])P.push(PX[i]+NX[i]*d,RHB[i]+dy,PZ[i]+NZ[i]*d);}
+      for(let k=0;k<b-a;k++){const o=base+k*4;for(let e=0;e<3;e++){const p0=o+e,p1=o+e+1,q0=p0+4,q1=p1+4;I.push(p0,q0,p1,p1,q0,q1);}}};
+    for(let i=0;i<NS;i++){const el=ELEV[i]>1.2&&!inGap(i);if(el&&segStart<0)segStart=i;if((!el||i===NS-1)&&segStart>=0){if(i-segStart>2)addSeg(Math.max(0,segStart-2),Math.min(NS-1,i+2));segStart=-1;}}
+    if(P.length){const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setIndex(I);g.computeVertexNormals();
+      const m=new THREE.Mesh(g,toon(0xe8e2f0,{side:THREE.DoubleSide}));m.castShadow=true;WG.add(m);}
+    const pil=[];for(let i=Math.round(20/DSA);i<NS;i+=14){if(ELEV[i]>4&&!inGap(i)){for(const d of [-HALFW+1.2,HALFW-1.2]){const x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d;pil.push([x,natural(x,z),z,RHB[i]-1.6,head(i),Math.floor(i/14)%2]);}}}
+    const pm=instancedPair(GEO.box,toon(0xffffff,{}),pil.length,0.03);
+    pil.forEach((p,k)=>{const h=Math.max(0.5,p[3]-p[1]+1);Q.setFromEuler(E.set(0,p[4],0));M.compose(V.set(p[0],p[1]+h/2-1,p[2]),Q,Sv.set(2.4,h,2.4));pm.setMatrixAt(k,M);pm.setColorAt(k,col.set(p[5]?ORANGE:WHITE));});
+    if(pm.instanceColor)pm.instanceColor.needsUpdate=true;
+  }
+  // Tokyo Tower: the start platform sits on top of it
+  {
+    const lat=canvasTex(128,128,(x,w,h)=>{x.clearRect(0,0,w,h);x.strokeStyle='#fff';x.lineWidth=9;x.strokeRect(0,0,w,h);x.lineWidth=6;x.beginPath();x.moveTo(0,0);x.lineTo(w,h);x.moveTo(w,0);x.lineTo(0,h);x.stroke();x.lineWidth=5;x.beginPath();x.moveTo(0,h/2);x.lineTo(w,h/2);x.stroke();},true,true);
+    const i0=0,tx=TX[i0],tz=TZ[i0],cx=PX[i0]-tx*14,cz=PZ[i0]-tz*14,top=RHB[i0]-1.2,g=natural(cx,cz)-2,Hd=top-g;
+    const T=new THREE.Group();T.position.set(cx,g,cz);T.rotation.y=head(i0)+Math.PI/4;WG.add(T);world.tower=T;
+    const seg=(y0,y1,rb,rt,c,rep)=>{const t=lat.clone();t.needsUpdate=true;t.repeat.set(4,Math.max(1,Math.round((y1-y0)/rep)));
+      const m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,y1-y0,4,1,true),toon(c,{map:t,alphaTest:0.5,side:THREE.DoubleSide}));m.position.y=(y0+y1)/2;T.add(m);return m;};
+    const r0=Math.max(18,Hd*0.2),r1=Math.max(7,Hd*0.075),r2=5.5;
+    seg(0,Hd*0.42,r0,r1,ORANGE,r0*0.35);
+    const d1=new THREE.Mesh(GEO.cyl,toon(WHITE));d1.scale.set(r1*1.6,Hd*0.045,r1*1.6);d1.position.y=Hd*0.44;T.add(d1);d1.add(new THREE.Mesh(oGeo(GEO.cyl),outlineMat(0.04)));
+    const band=new THREE.Mesh(GEO.cyl,new THREE.MeshBasicMaterial({color:0xfff2c0}));band.scale.set(r1*1.62,Hd*0.008,r1*1.62);band.position.y=Hd*0.44;T.add(band);
+    seg(Hd*0.46,Hd*0.7,r1,(r1+r2)/2,WHITE,8);seg(Hd*0.7,Hd*0.93,(r1+r2)/2,r2,ORANGE,8);
+    const deck=new THREE.Mesh(GEO.box,toon(WHITE));deck.scale.set(30,3.2,30);deck.position.y=Hd-1.6;T.add(deck);deck.add(new THREE.Mesh(oGeo(GEO.box),outlineMat(0.04)));
+    seg(Hd+1,Hd+26,r2,1.6,ORANGE,6);seg(Hd+26,Hd+42,1.6,0.8,WHITE,6);
+    part(T,GEO.cylLo,0xd9d9e0,[0,Hd+52,0],[0.35,20,0.35],null,0.02);world.antTip=part(T,GEO.sphereLo,new THREE.MeshBasicMaterial({color:0xff3b30}),[0,Hd+62.3,0],[0.7,0.7,0.7],null,0);
+    for(const [sx,sz] of [[1,1],[1,-1],[-1,1],[-1,-1]]){const L=part(T,GEO.box,ORANGE,[sx*r0*0.62,Hd*0.1,sz*r0*0.62],[3,Hd*0.2,3],[sz*0.22,0,-sx*0.22],0.03);}   // splayed feet
+  }
+  // neon city: blocks of towers lined up with the nearest street, lit windows, rooftop pinball signs
+  const bigB=[];
+  {
+    const cls=[{tex:[facadeTex(5,4,11),facadeTex(5,5,12)],list:[]},{tex:[facadeTex(12,5,13),facadeTex(12,6,14)],list:[]},{tex:[facadeTex(26,6,15),facadeTex(26,7,16)],list:[]}];
+    const tints=['#ffd6ea','#d8e4ff','#fff0c9','#e6d6ff','#cffff0','#ffe0d2','#f4f4f8','#ffd0f0'];
+    const signs=[];
+    // blocks in bands either side of the course (out to ~240 m), never on top of each other or of another part of the course
+    const occ=new Set(),ok=(x,z,r)=>{const c0=Math.floor((x-r)/12),c1=Math.floor((x+r)/12),r0=Math.floor((z-r)/12),r1=Math.floor((z+r)/12);for(let a=c0;a<=c1;a++)for(let b=r0;b<=r1;b++)if(occ.has(a*100003+b))return false;
+      for(let a=c0;a<=c1;a++)for(let b=r0;b<=r1;b++)occ.add(a*100003+b);return true;};
+    for(let i=I0;i<NS;i+=9)for(const sg of [1,-1])for(let band=0;band<8;band++){
+      if(R()<0.18)continue;
+      const w=12+R()*12,d=12+R()*12,dd=sg*(FLAT+6+Math.max(w,d)*0.6+band*30+R()*10),x=PX[i]+NX[i]*dd+TX[i]*(R()-0.5)*10,z=PZ[i]+NZ[i]*dd+TZ[i]*(R()-0.5)*10;
+      const t=terrainInfo(x,z);if(t.h<3||t.dist<FLAT+5+Math.max(w,d)*0.72)continue;
+      if(!ok(x,z,Math.max(w,d)*0.55))continue;
+      let h=(10+R()*18+(band<2?R()*35:R()*60)+(R()<0.14?50+R()*60:0))*(0.35+0.65*smoothstep(300,700,S[i]-S0));   // low-rise round the tower so it stands tall
+      const c=h<24?0:h<55?1:2;cls[c].list.push([x,t.h,z,w,h,d,head(i)]);bigB.push([x,z,Math.max(w,d)*0.62]);
+      if(band<2&&R()<0.35)signs.push([x-NX[i]*sg*(d/2+0.2),t.h+h+3.2,z-NZ[i]*sg*(d/2+0.2),Math.atan2(-NX[i]*sg,-NZ[i]*sg),Math.floor(R()*8)]);
+    }
+    for(const c of cls){const n=c.list.length;if(!n)continue;
+      const fm=f=>toon(0xffffff,{map:f,emissive:0xffffff,emissiveMap:f.emiTex,emissiveIntensity:0.9});
+      const mats=[fm(c.tex[0]),fm(c.tex[0]),toon(0x8e86a8),toon(0x8e86a8),fm(c.tex[1]),fm(c.tex[1])];
+      const m=new THREE.InstancedMesh(GEO.box,mats,n);m.frustumCulled=false;WG.add(m);
+      const o=new THREE.InstancedMesh(oGeo(GEO.box),outlineMat(0.05),n);o.instanceMatrix=m.instanceMatrix;o.frustumCulled=false;WG.add(o);
+      c.list.forEach((b,k)=>{Q.setFromEuler(E.set(0,b[6],0));M.compose(V.set(b[0],b[1]+b[4]/2-1,b[2]),Q,Sv.set(b[3],b[4]+2,b[5]));m.setMatrixAt(k,M);m.setColorAt(k,col.set(tints[Math.floor(R()*tints.length)]));});
+      m.instanceColor.needsUpdate=true;}
+    const words=[['TILT','#ff3fb0'],['BONUS','#3fe8ff'],['JACKPOT','#ffd23f'],['EXTRA BALL','#7dff6a'],['MULTIBALL','#ff8a3f'],['REPLAY','#c77dff'],['x2','#ff3fb0'],['TOKIYAMA','#3fe8ff']];
+    const byW=words.map(()=>[]);for(const sg of signs)byW[sg[4]].push(sg);
+    byW.forEach((L,k)=>{if(!L.length)return;const m=new THREE.InstancedMesh(new THREE.PlaneGeometry(14,4.4),new THREE.MeshBasicMaterial({map:neonTex(words[k][0],words[k][1]),side:THREE.DoubleSide}),L.length);m.frustumCulled=false;WG.add(m);
+      L.forEach((b,q)=>{Q.setFromEuler(E.set(0,b[3],0));M.compose(V.set(b[0],b[1],b[2]),Q,Sv.set(1,1,1));m.setMatrixAt(q,M);});});
+    world.tokyo={blocks:cls.map(c=>c.list.length),signs:signs.length};
+  }
+  // sakura: cherry trees along the verges and in the gaps between blocks
+  {
+    const T=[];const ok=(x,z)=>{const t=terrainInfo(x,z);if(t.dist<FLAT+3||t.h<3)return null;for(const q of bigB)if((q[0]-x)**2+(q[1]-z)**2<(q[2]+3)**2)return null;return t.h;};
+    for(let i=I0;i<NS;i+=4)for(const sg of [1,-1]){if(R()>0.5)continue;const d=sg*(FLAT+4+R()*14),x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d,h=ok(x,z);if(h!==null)T.push([x,h,z]);}
+    const tr=instancedPair(new THREE.CylinderGeometry(0.25,0.38,1,6),toon(0x5a3a33),T.length,0),cn=instancedPair(GEO.sphereLo,toon(0xffffff,{}),T.length,0.03);
+    const pk=['#ffc1dc','#ffb0d2','#ffd3e6','#ff9fc8'].map(c=>new THREE.Color(c));
+    T.forEach((t,k)=>{const s2=2.2+R()*1.6;M.compose(V.set(t[0],t[1]+1.2,t[2]),Q.identity(),Sv.set(1,2.6,1));tr.setMatrixAt(k,M);M.compose(V.set(t[0],t[1]+2.4+s2*0.7,t[2]),Q,Sv.set(s2*1.2,s2*0.85,s2*1.2));cn.setMatrixAt(k,M);cn.setColorAt(k,pk[Math.floor(R()*4)]);});
+    if(cn.instanceColor)cn.instanceColor.needsUpdate=true;
+  }
+  // a big torii gate just past the finish line
+  {const fi=Math.min(NS-3,Math.round((FINISH_S+24)/DSA)),g=new THREE.Group();g.position.set(PX[fi],RHB[fi],PZ[fi]);g.rotation.y=head(fi);WG.add(g);const W=RAIL+2.5;
+    for(const sx of [1,-1]){part(g,GEO.cyl,0xd6341f,[sx*W,6,0],[0.75,12,0.75],null,0.04);part(g,GEO.cyl,0x1d1e24,[sx*W,0.4,0],[0.95,0.8,0.95],null,0.03);}
+    part(g,GEO.box,0xd6341f,[0,10.2,0],[W*2+1.2,0.8,0.9],null,0.04);part(g,GEO.box,0x1d1e24,[0,12.3,0],[W*2+4,0.9,1.3],null,0.04);part(g,GEO.box,0xd6341f,[0,11.6,0],[W*2+3,0.6,1.1],null,0.03);}
+  if(!OBS)return;
+  const V2={};OBS.vis=V2;
+  // --- spinning pool noodles
+  for(const o of OBS.spin){const g=new THREE.Group();g.position.set(o.x,o.y,o.z);WG.add(g);
+    part(g,GEO.cyl,WHITE,[0,1.1,0],[0.5,2.2,0.5],null,0.03);for(let k=0;k<4;k++)part(g,GEO.cyl,PINK,[0,0.3+k*0.5,0],[0.52,0.18,0.52],null,0);
+    const arm=new THREE.Group();arm.position.y=0.85;g.add(arm);o.mesh=arm;
+    part(arm,GEO.sphereLo,YEL,[0,0,0],[0.7,0.5,0.7],null,0.03);
+    for(const [sx,c] of [[1,PINK],[-1,CYAN]]){part(arm,GEO.cyl,c,[sx*o.L/2,0,0],[0.34,o.L,0.34],[0,0,Math.PI/2],0.025);part(arm,GEO.sphereLo,YEL,[sx*o.L,0,0],[0.36,0.36,0.36],null,0.02);}
+  }
+  // --- cannons (and their chrome pinballs)
+  const chrome=std({color:0xf2f4f8,metalness:1,roughness:0.12,envMapIntensity:1.6});
+  for(const o of OBS.cannons){const d=o.side*(RAIL+6.5),g=new THREE.Group();g.position.set(o.x+o.nx*d,o.y,o.z+o.nz*d);g.rotation.y=Math.atan2(-o.side*o.nz,o.side*o.nx)*-1;WG.add(g);
+    // local +x points across the road
+    g.rotation.y=Math.atan2(o.side*o.nz,-o.side*o.nx);
+    part(g,GEO.box,0x5b2a86,[0,0.8,0],[4.2,1.6,3.4],null,0.04);for(const sz of [1,-1])part(g,GEO.cyl,YEL,[0,0.9,sz*1.9],[1.1,0.35,1.1],[Math.PI/2,0,0],0.03);
+    const bar=new THREE.Group();g.add(bar);o.barrel=bar;bar.position.y=1.9;
+    part(bar,GEO.cyl,0x1d1e24,[0.8,0.6,0],[1.5,5,1.5],[0,0,Math.PI/2+0.12],0.05);part(bar,GEO.cyl,YEL,[3.1,0.9,0],[1.75,0.5,1.75],[0,0,Math.PI/2+0.12],0.03);part(bar,GEO.cyl,PINK,[-1.2,0.35,0],[1.7,0.4,1.7],[0,0,Math.PI/2+0.12],0.03);
+    const b=new THREE.Mesh(new THREE.SphereGeometry(o.R,24,16),chrome);b.castShadow=true;b.visible=false;WG.add(b);o.ball=b;
+    // hazard stripe across the road where the balls roll
+    const P=[],U=[],I=[];for(let k=-3;k<=3;k++){const i=clamp(o.i+k,0,NS-1);for(const dd of [RAIL,-RAIL]){P.push(PX[i]+NX[i]*dd,RH[i]+0.05,PZ[i]+NZ[i]*dd);U.push(dd>0?0:4,(k+3)/6);}if(k<3){const q=(k+3)*2;I.push(q,q+1,q+2,q+1,q+3,q+2);}}
+    const hg=new THREE.BufferGeometry();hg.setAttribute('position',new THREE.Float32BufferAttribute(P,3));hg.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));hg.setIndex(I);hg.computeVertexNormals();
+    WG.add(new THREE.Mesh(hg,toon(0xffffff,{map:texHazard,transparent:true,opacity:0.85})));
+  }
+  // --- pop bumpers (instanced: chrome base, coloured body that flashes when hit, white cap)
+  if(OBS.bumpers.length){const n=OBS.bumpers.length,cc=[PINK,CYAN,YEL,0x7dff6a,0xff8a3f].map(c=>new THREE.Color(c));
+    const base=instancedPair(GEO.cyl,chrome,n,0.03),body=instancedPair(GEO.cyl,toon(0xffffff,{emissive:0x222222}),n,0.03),cap=instancedPair(GEO.cyl,toon(0xffffff,{}),n,0.03);
+    OBS.bumpers.forEach((o,k)=>{o.col=cc[k%cc.length];M.compose(V.set(o.x,o.y+0.2,o.z),Q.identity(),Sv.set(o.R+0.25,0.4,o.R+0.25));base.setMatrixAt(k,M);
+      M.compose(V.set(o.x,o.y+0.95,o.z),Q,Sv.set(o.R,1.1,o.R));body.setMatrixAt(k,M);body.setColorAt(k,o.col);M.compose(V.set(o.x,o.y+1.6,o.z),Q,Sv.set(o.R+0.15,0.22,o.R+0.15));cap.setMatrixAt(k,M);});
+    body.instanceColor.needsUpdate=true;Object.assign(V2,{bump:body,M:new THREE.Matrix4(),q:new THREE.Quaternion(),v:new THREE.Vector3(),sv:new THREE.Vector3(),col:new THREE.Color(),white:new THREE.Color(0xffffff)});
+    // maze floor art: a pinball playfield panel under the bumpers
+    const a=Math.round((S0+OBS.maze[0])/DSA),b=Math.round((S0+OBS.maze[1])/DSA);
+    const pf=canvasTex(256,256,(x,w,h)=>{x.fillStyle='#1c1440';x.fillRect(0,0,w,h);x.strokeStyle='rgba(255,63,176,.55)';x.lineWidth=3;for(let k=0;k<6;k++){x.beginPath();x.arc(w/2,h/2,20+k*22,0,Math.PI*2);x.stroke();}x.fillStyle='rgba(63,232,255,.5)';for(let k=0;k<12;k++){const a2=k/12*Math.PI*2;x.beginPath();x.arc(w/2+Math.cos(a2)*105,h/2+Math.sin(a2)*105,7,0,Math.PI*2);x.fill();}},true,true);
+    const P=[],U=[],I=[];for(let i=a;i<=b;i++){for(const dd of [HALFW,-HALFW]){P.push(PX[i]+NX[i]*dd,RH[i]+0.045,PZ[i]+NZ[i]*dd);U.push(dd>0?0:1,(S[i]-S[a])/18);}if(i<b){const q=(i-a)*2;I.push(q,q+1,q+2,q+1,q+3,q+2);}}
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.setIndex(I);g.computeVertexNormals();
+    const m=new THREE.Mesh(g,toon(0xffffff,{map:pf}));m.receiveShadow=true;WG.add(m);
+  }
+  // --- wind fans + the boost lane they blow along
+  const arrowT=canvasTex(64,128,(x,w,h)=>{x.clearRect(0,0,w,h);x.fillStyle='rgba(120,240,255,.85)';for(let k=0;k<2;k++){const y=k*64+8;x.beginPath();x.moveTo(w/2,y);x.lineTo(w-6,y+34);x.lineTo(w-18,y+44);x.lineTo(w/2,y+18);x.lineTo(18,y+44);x.lineTo(6,y+34);x.closePath();x.fill();}},false,true);
+  for(const o of OBS.fans){const dir=new THREE.Vector3(o.tx*Math.cos(0.42)-o.side*o.nx*Math.sin(0.42),0,o.tz*Math.cos(0.42)-o.side*o.nz*Math.sin(0.42));
+    const g=new THREE.Group();g.position.set(o.x,o.y+5,o.z);WG.add(g);g.lookAt(o.x+dir.x,o.y+5,o.z+dir.z);
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(4.2,0.45,10,40),chrome);g.add(ring);
+    const back=new THREE.Mesh(new THREE.CylinderGeometry(4.2,4.2,1.2,32,1,true),toon(0x5b2a86,{side:THREE.DoubleSide}));back.rotation.x=Math.PI/2;back.position.z=-0.6;g.add(back);
+    const bl=new THREE.Group();g.add(bl);o.blades=bl;part(bl,GEO.sphereLo,YEL,[0,0,0.2],[0.9,0.9,0.6],null,0.03);
+    for(let k=0;k<5;k++){const b=new THREE.Group();b.rotation.z=k/5*Math.PI*2;bl.add(b);part(b,GEO.box,k%2?PINK:CYAN,[0,2.1,0],[1.3,3.3,0.12],[0,0.35,0],0.02);}
+    for(const sx of [1,-1])part(WG,GEO.box,0x3d3456,[o.x+o.tz*sx*1.6,o.y+0.8,o.z-o.tx*sx*1.6],[0.6,1.6+0.8,0.6],null,0.02);
+    part(g,GEO.box,0x3d3456,[0,-3.4,-0.6],[1.2,2.8,1.2],null,0.03);
+    // boost lane on the fan's side of the road
+    const a=o.i,b=Math.min(NS-1,a+Math.round(o.reach/DSA)),P=[],U=[],I=[];
+    for(let i=a;i<=b;i++){for(const dd of [o.side*(HALFW-0.4),o.side*(HALFW-6)]){P.push(PX[i]+NX[i]*dd,RH[i]+0.06,PZ[i]+NZ[i]*dd);U.push(dd===o.side*(HALFW-0.4)?0:1,(S[i]-S[a])/6);}if(i<b){const q=(i-a)*2;I.push(q,q+1,q+2,q+1,q+3,q+2);}}
+    const lg=new THREE.BufferGeometry();lg.setAttribute('position',new THREE.Float32BufferAttribute(P,3));lg.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));lg.setIndex(I);
+    WG.add(new THREE.Mesh(lg,new THREE.MeshBasicMaterial({map:arrowT,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3})));
+  }
+  // --- the hammer pit: neon walls and floor, then the two giant hammers
+  if(OBS.hammers.length&&GAPS.length){const [a,b]=GAPS[GAPS.length-1],line=i=>lerp(RHB[a],RHB[b],(i-a)/(b-a));
+    const wm=toon(0x2a1d52,{side:THREE.DoubleSide}),P=[],I=[];
+    for(const sg of [1,-1]){const base=P.length/3;for(let i=a;i<=b;i++){const d=sg*(RAIL+0.2);P.push(PX[i]+NX[i]*d,line(i)+0.1,PZ[i]+NZ[i]*d,PX[i]+NX[i]*d,Math.min(RHB[i],line(i))-0.5,PZ[i]+NZ[i]*d);if(i<b){const q=base+(i-a)*2;I.push(q,q+1,q+2,q+1,q+3,q+2);}}}
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setIndex(I);g.computeVertexNormals();WG.add(new THREE.Mesh(g,wm));
+    const fl=[],fi=[];for(let i=a;i<=b;i++){for(const dd of [RAIL+0.2,-RAIL-0.2])fl.push(PX[i]+NX[i]*dd,RHB[i]-0.1,PZ[i]+NZ[i]*dd);if(i<b){const q=(i-a)*2;fi.push(q,q+1,q+2,q+1,q+3,q+2);}}
+    const fg=new THREE.BufferGeometry();fg.setAttribute('position',new THREE.Float32BufferAttribute(fl,3));fg.setIndex(fi);fg.computeVertexNormals();WG.add(new THREE.Mesh(fg,toon(0x3a2470,{side:THREE.DoubleSide})));
+    for(const i of [a,b]){const P2=[];for(const [d,y] of [[RAIL+0.2,line(i)+0.1],[-RAIL-0.2,line(i)+0.1],[-RAIL-0.2,RHB[i]-0.3],[RAIL+0.2,RHB[i]-0.3]])P2.push(PX[i]+NX[i]*d,y,PZ[i]+NZ[i]*d);
+      const g2=new THREE.BufferGeometry();g2.setAttribute('position',new THREE.Float32BufferAttribute(P2,3));g2.setIndex([0,1,2,0,2,3]);g2.computeVertexNormals();WG.add(new THREE.Mesh(g2,wm));}
+    for(const o of OBS.hammers){const yaw=new THREE.Group();yaw.position.set(o.x,o.y,o.z);yaw.rotation.y=Math.atan2(o.tx,o.tz);WG.add(yaw);
+      const W=RAIL+2.5;part(yaw,GEO.cyl,0xd9d9e0,[0,0,0],[0.7,W*2,0.7],[0,0,Math.PI/2],0.03);
+      for(const sx of [1,-1]){part(yaw,GEO.box,0x5b2a86,[sx*W,-2,0],[1.6,14,1.6],null,0.04);part(yaw,GEO.cyl,YEL,[sx*(W-0.9),0,0],[1.2,0.5,1.2],[0,0,Math.PI/2],0.03);}
+      const rot=new THREE.Group();yaw.add(rot);o.mesh=rot;
+      part(rot,GEO.box,0x3d3456,[0,0,o.L/2],[1.4,1.0,o.L],null,0.04);
+      part(rot,GEO.cyl,0xe0282e,[0,0,o.L],[o.R,HALFW*2+1,o.R],[0,0,Math.PI/2],0.05);
+      for(const sx of [-1,-0.33,0.33,1])part(rot,GEO.cyl,WHITE,[sx*(HALFW+0.3),0,o.L],[o.R+0.06,0.5,o.R+0.06],[0,0,Math.PI/2],0);
+      const st=new THREE.Mesh(new THREE.CircleGeometry(o.R*0.9,5),new THREE.MeshBasicMaterial({color:YEL,side:THREE.DoubleSide}));st.position.set(HALFW+0.55,0,o.L);st.rotation.y=Math.PI/2;rot.add(st);}
+  }
 }
 /* ---------- Nomahe scenery: rock-hewn tunnel with portals, cacti, shrubs, boulders, hoodoos, the split sign ---------- */
 function buildCanyon(minX,maxX,minZ,maxZ){
@@ -1282,7 +1548,7 @@ function buildCanyon(minX,maxX,minZ,maxZ){
   // the big rock between the branches: a sandstone mesa whose walls stand just behind the inner barriers
   {const P=[],U=[],I=[];let a=0;while(a<NS&&SPL[a]<RAIL+1.6)a++;let b=a;while(b<NS-1&&SPL[b+1]>=RAIL+1.6)b++;
     if(b>a+2){
-      for(let i=a;i<=b;i++){const e=SPL[i]-RAIL-1.1,H=3+(60+14*Math.sin(S[i]*0.021))*smoothstep(0,9,e),ins=Math.min(e*0.7,3+1.5*Math.sin(S[i]*0.05)),y0=RHB[i]-1,y1=RHB[i]+H;
+      for(let i=a;i<=b;i++){const e=SPL[i]-RAIL-1.1,H=3+(60+14*Math.sin(S[i]*0.021))*smoothstep(0,9,e),ins=Math.min(e*0.7,3+1.5*Math.sin(S[i]*0.05)),y0=RHB[i]-2.6,y1=RHB[i]+H;
         for(const [d,y,u,v] of [[-e,y0,S[i]/24,0],[-(e-ins),y1,S[i]/24,H/34],[e-ins,y1,S[i]/24+(e-ins)/12,H/34],[e,y0,S[i]/24,0]]){P.push(PX[i]+NX[i]*d,y,PZ[i]+NZ[i]*d);U.push(u,v);}
         if(i<b){const o=(i-a)*4;for(let r=0;r<3;r++)I.push(o+r,o+r+1,o+r+4,o+r+1,o+r+5,o+r+4);}}
       for(const [i,o,f] of [[a,0,1],[b,(b-a)*4,0]]){if(f)I.push(o,o+3,o+1,o+1,o+3,o+2);else I.push(o,o+1,o+3,o+1,o+2,o+3);}   // nose and tail faces
@@ -1923,14 +2189,14 @@ function placeOnTrack(c,s,d,spd){
   const i=clamp(Math.round(s/DSA),0,NS-1);
   c.x=PX[i]+NX[i]*d;c.z=PZ[i]+NZ[i]*d;c.idx=i;c.psi=Math.atan2(TX[i],TZ[i]);
   c.vx=TX[i]*(spd||0);c.vz=TZ[i]*(spd||0);c.vy=0;c.r=0;c.fyf=0;c.fyr=0;c.steerRaw=0;c.steerIn=0;c.delta=0;
-  locate(c);c.y=interp(roadD(c.idx,c.d)<HALFW+0.35?RH:RHB,c.idx,c.along);
+  locate(c);c.y=interp(roadD(c.idx,c.d)<HALFW+0.35?RH:RHB,c.idx,c.along)+bankAt(c.idx,c.d);
 }
 let gateOpen=0,lastCount=4,finalShown=false,tableT=0;
 function resetRace(){
   finishCount=0;raceT=0;countT=3.6;afterFinishT=0;resultsShown=false;finalShown=false;
   cars.forEach((c,k)=>{
-    Object.assign(c,{side:Math.random()<0.5?-1:1,finished:false,finishTime:0,place:0,pushes:0,pushTimer:0.3+Math.random()*0.2,driftCharge:0,boostT:0,airT:0,stuckT:0,brake:0,handbrake:false,pitch:0,roll:0,bounce:0,bounceV:0,assist:0,ax:0,fyf:0,fyr:0,draft:0,tow:null,towCD:2+Math.random()*4,passT:0,lane:c.baseLane});
-    const ps=playerSlot(),slot=c.slot!=null?c.slot:c===player?ps:(k<ps?k:k+1);placeOnTrack(c,S0+GRID[slot][0],GRID[slot][1],0);if(c.remote){c.net=null;c.oldNet=null;c.ex=undefined;c.buf=[];c.kvx=c.kvz=c.kox=c.koz=c.kop=c.kr=0;c.pj=undefined;c.fx=undefined;c.gotHitT=c.hitDoneT=c.kickT=null;c.pendHit=null;}
+    Object.assign(c,{side:Math.random()<0.5?-1:1,out:false,outT:0,ejectT:null,obsCD:{},finished:false,finishTime:0,place:0,pushes:0,pushTimer:0.3+Math.random()*0.2,driftCharge:0,boostT:0,airT:0,stuckT:0,brake:0,handbrake:false,pitch:0,roll:0,bounce:0,bounceV:0,assist:0,ax:0,fyf:0,fyr:0,draft:0,tow:null,towCD:2+Math.random()*4,passT:0,lane:c.baseLane});
+    const ps=playerSlot(),slot=c.slot!=null?c.slot:c===player?ps:(k<ps?k:k+1);placeOnTrack(c,S0+GRID[slot][0],GRID[slot][1]*HALFW/6,0);if(c.remote){c.net=null;c.oldNet=null;c.ex=undefined;c.buf=[];c.kvx=c.kvz=c.kox=c.koz=c.kop=c.kr=0;c.pj=undefined;c.fx=undefined;c.gotHitT=c.hitDoneT=c.kickT=null;c.pendHit=null;}
   });
   world.gateArm.rotation.z=0;gateOpen=0;
   state='countdown';lastCount=4;
@@ -1947,12 +2213,14 @@ function locate(c){
 function groundOf(c){
   const onRoad=roadD(c.idx,c.d)<HALFW+0.35;const arr=onRoad?RH:RHB;
   let i0=c.along>=0?c.idx:c.idx-1;i0=clamp(i0,0,NS-2);
-  return {h:interp(arr,c.idx,c.along)-(onRoad?0:0.1),grade:(arr[i0+1]-arr[i0])/DSA,onRoad};
+  const bk=bankInfo(c.idx,c.along,c.d);
+  return {h:interp(arr,c.idx,c.along)-(onRoad?0:0.1)+bk.h,grade:(arr[i0+1]-arr[i0])/DSA+bk.ds,lat:bk.dd,onRoad};
 }
 function stepCar(c,dt){
   locate(c);
   const D=c.dsg,m=D.mass,Iz=m*1.5*D.izf,LA=LW*(1-D.wd),LB=LW*D.wd;
-  const gi=groundOf(c),gh=gi.h,grade=gi.grade,onRoad=gi.onRoad;c.onRoad=onRoad;c.onDirt=onRoad&&SURF[c.idx]===1;
+  const gi=groundOf(c),gh=c.out?-1e4:gi.h,grade=gi.grade,onRoad=gi.onRoad;c.onRoad=onRoad;c.onDirt=onRoad&&SURF[c.idx]===1;
+  if(c.out){c.outT=(c.outT||0)+dt;if(c.outT>1.3){c.out=false;c.outT=0;c.ejectT=null;respawn(c);if(c===player)flash('Knocked out!','Back on track');return;}}
   const tx=TX[c.idx],tz=TZ[c.idx];
   const sp=Math.sin(c.psi),cp=Math.cos(c.psi);
   const fx=sp,fz=cp,lx=cp,lz=-sp;
@@ -1961,7 +2229,7 @@ function stepCar(c,dt){
   c.grounded=c.y<=gh+0.06;
   let Fx=0,Fz=0,Tq=0;
   const dk=0.5*RHO*D.cda*1.1*spd*(1-DRAFT_MAX*c.draft);Fx-=dk*c.vx;Fz-=dk*c.vz;  // aero drag (less when slipstreaming)
-  const mu=(onRoad?(c.onDirt?1.05*0.85:1.05):0.6)*ARC_GRIP*D.grip;   // dirt: 15% less grip, same rolling speed as tarmac
+  const mu=(onRoad?(c.onDirt?1.05*DIRT_GRIP:1.05):0.6)*ARC_GRIP*D.grip;   // dirt: less grip, same rolling speed as tarmac
   // steering: the wheel can turn up to what the front tyres can actually use at this speed
   // extra lock is always available when steering into a slide (counter-steer)
   const bNow=spd>3&&u>0?Math.atan2(v,u):0;
@@ -1970,6 +2238,7 @@ function stepCar(c,dt){
   if(c.grounded){
     const kk=SLOPE_ASSIST/(1+grade*grade);
     Fx+=-m*G_*tx*grade*kk;Fz+=-m*G_*tz*grade*kk;                            // gravity along the slope
+    const bk=gi.lat||0;if(bk){const fb=-m*G_*bk/(1+bk*bk);Fx+=NX[c.idx]*fb;Fz+=NZ[c.idx]*fb;}   // banked turn: gravity pulls you into the curve
     const hs=Math.min(1,spd/V_REF);                                         // 0→1 as speed approaches 170 km/h
     const N=m*G_*(1+DOWNFORCE*hs*hs);                                        // aero downforce: +15% tyre load at 170 km/h
     const su=clamp(u/0.8,-1,1);
@@ -2014,18 +2283,22 @@ function stepCar(c,dt){
   }
   c.r=clamp(c.r+Tq/Iz*dt,-3,3);c.psi+=c.r*dt;
   c.x+=c.vx*dt;c.z+=c.vz*dt;
-  const gVy=grade*(c.vx*tx+c.vz*tz);
+  let gVy=grade*(c.vx*tx+c.vz*tz)/Math.max(0.4,1-KS[c.idx]*c.d)+(gi.lat||0)*(c.vx*NX[c.idx]+c.vz*NZ[c.idx]);
+  // driving into a face steeper than ~35° (the far bank of a gap): you don't get fired into the sky, you scrub speed
+  if(c.grounded&&spd>1){const up=gVy/spd;if(up>0.7){const k=Math.exp(-dt*(up-0.7)*7);c.vx*=k;c.vz*=k;}gVy=Math.min(gVy,0.55*Math.hypot(c.vx,c.vz));}   // ground's vertical speed under the car: off-centre in a bend the course passes faster/slower; plus the bank
   c.vy-=G_*dt;c.y+=c.vy*dt;
   if(!c.grounded)c.airT+=dt;
   if(TUNNELS.length&&inTunnel(c.idx)){const top=RHB[c.idx]+9;if(c.y>top){c.y=top;if(c.vy>0)c.vy*=-0.2;}}   // tunnel roof
   locate(c);const g2=groundOf(c);
-  if(c.y<=g2.h){const impact=gVy-c.vy;c.y=g2.h;if(c.airT>0.12)land(c,impact);c.airT=0;c.vy=gVy;}
+  if(c.y<=g2.h&&!c.out){const impact=gVy-c.vy;c.y=g2.h;if(c.airT>0.12)land(c,impact);c.airT=0;c.vy=gVy;}
   const relA=c.psi-Math.atan2(TX[c.idx],TZ[c.idx]);
   const reach=Math.abs(c.box.hw*Math.cos(relA))+Math.abs(c.box.hl*Math.sin(relA));   // how far the box sticks out sideways
   const wallC=BARRIER-reach,spl=SPL[c.idx],ad=Math.abs(c.d);
   // outer barrier, or (where the road splits) the rock between the branches; a wall that closes in along the course counts as moving towards you
   const outer=ad-spl>wallC,innerW=spl>0&&spl-ad>wallC;
-  if(outer||innerW){
+  // a cannon ball can throw you clean over the barrier: once you're above it, you're out of the course
+  if(outer&&!c.out&&c.ejectT!=null&&raceT-c.ejectT<2.5&&c.y>g2.h+1.1){c.out=true;c.outT=0;if(OBS)OBS.stats.out++;}
+  if((outer||innerW)&&!c.out){
     const i=c.idx,sd=Math.sign(c.d)||(c.side||1),sg=outer?sd:-sd,over=outer?ad-spl-wallC:spl-ad-wallC;
     c.x-=NX[i]*sg*over;c.z-=NZ[i]*sg*over;
     const slope=spl>0||SPL[Math.min(NS-1,i+1)]>0?(SPL[Math.min(NS-1,i+1)]-SPL[Math.max(0,i-1)])/(2*DSA):0,uT=c.vx*TX[i]+c.vz*TZ[i];
@@ -2133,10 +2406,118 @@ function tryPush(c){
 function respawn(c){
   let i=clamp(c.idx+3,0,NS-3);for(const g of GAPS)if(i>g[0]-4&&i<g[1]+3)i=Math.min(NS-3,g[1]+3);
   const sp=SPL[i],d=sp>0?(Math.sign(c.d)||1)*sp+clamp(Math.abs(c.d)-sp,-2,2)*(Math.sign(c.d)||1):clamp(c.d,-2,2);
-  placeOnTrack(c,S[i],d,10);c.stuckT=0;c.driftCharge=0;
+  placeOnTrack(c,S[i],d,10);c.stuckT=0;c.driftCharge=0;c.out=false;c.outT=0;c.ejectT=null;
   if(c===player)flash('Back on track');
 }
 
+/* ================= OBSTACLES (Tokiyama) =================
+   Everything moves on the shared race clock (raceT), so online every client sees the same noodle angle, the same cannon shot
+   and the same hammer swing. Each client only pushes its own cars; remote cars are drawn from the network as usual. */
+const obsClock=()=>state==='race'?raceT:state==='countdown'?-countT:performance.now()/1000;
+function trackPoint(s,d){const i=clamp(Math.round((S0+s)/DSA),0,NS-1);return {i,x:PX[i]+NX[i]*d,z:PZ[i]+NZ[i]*d,y:RH[i],tx:TX[i],tz:TZ[i],nx:NX[i],nz:NZ[i],s:S[i]};}
+function makeObstacles(cfg){
+  const O={spin:[],cannons:[],bumpers:[],fans:[],hammers:[],id:0,stats:{noodle:0,ball:0,bump:0,hammer:0,out:0}};
+  for(const q of cfg.spinners||[]){const p=trackPoint(q.s,q.d);O.spin.push(Object.assign(p,{L:q.L,w:q.w,ph:q.s*0.37,d:q.d,id:O.id++}));}
+  for(const q of cfg.cannons||[]){const p=trackPoint(q.s,0);O.cannons.push(Object.assign(p,{side:q.side,period:q.period,ph:q.ph,R:2.1,vb:24,start:RAIL+5,end:RAIL+14,id:O.id++}));}
+  if(cfg.maze){ // pop-bumper maze: staggered rows, always leaving a gap a car fits through
+    const r=rng(777),q=cfg.maze,pat=[[-6,0,6],[-3,3],[-7.2,-2.4,2.4,7.2],[-4.5,1.5],[-1.5,4.5],[-6,0,6],[-3,3]];O.maze=[q.from,q.from+q.len];
+    let k=0;for(let sv=q.from+6;sv<q.from+q.len-4;sv+=12.5,k++){for(const d0 of pat[k%pat.length]){const d=clamp(d0+(r()-0.5)*1.2,-(HALFW-1.6),HALFW-1.6);const p=trackPoint(sv,d);O.bumpers.push(Object.assign(p,{d,R:1.15,hitT:-9,id:O.id++}));}}
+  }
+  for(const q of cfg.fans||[]){const p=trackPoint(q.s,q.side*(RAIL+3.5));O.fans.push(Object.assign(p,{side:q.side,s:S0+q.s,reach:48,id:O.id++}));}
+  if(cfg.hammers&&GAPS.length){const g=GAPS[GAPS.length-1],lipS=S[g[0]],a=g[0],b=g[1];
+    for(const q of cfg.hammers){const sp=lipS+q.ds,i=Math.round(sp/DSA),u=(i-a)/(b-a),line=lerp(RHB[a],RHB[b],u);
+      O.hammers.push({s:sp,i,x:PX[i],z:PZ[i],y:line-3,L:q.L,w:q.w,ph:q.ph,R:1.5,tx:TX[i],tz:TZ[i],nx:NX[i],nz:NZ[i],id:O.id++});}}
+  O.bumpers.sort((a,b)=>a.s-b.s);
+  return O;
+}
+// cannon ball: where it is at time t (null when the cannon is reloading)
+function ballAt(o,t){const n=Math.floor((t-o.ph)/o.period),tau=t-o.ph-n*o.period,life=(o.start+o.end)/o.vb;if(t<o.ph||tau>life)return null;
+  const d=o.side*(o.start-o.vb*tau);return {d,x:o.x+o.nx*d,z:o.z+o.nz*d,y:o.y+o.R+Math.abs(Math.sin(tau*5))*0.35,vx:-o.side*o.vb*o.nx,vz:-o.side*o.vb*o.nz,tau};}
+const hammerAngle=(o,t)=>Math.PI/2+o.ph+o.w*t;     // 0 = head pointing forward along the course, π/2 = straight up
+// closest points between two 2D segments (car capsule vs noodle)
+function segSeg(ax,az,bx,bz,cx,cz,dx,dz){
+  const ux=bx-ax,uz=bz-az,vx=dx-cx,vz=dz-cz,wx=ax-cx,wz=az-cz,a=ux*ux+uz*uz,b=ux*vx+uz*vz,c=vx*vx+vz*vz,d=ux*wx+uz*wz,e=vx*wx+vz*wz,D=a*c-b*b;
+  let s=D>1e-9?clamp((b*e-c*d)/D,0,1):0,t=c>1e-9?clamp((b*s+e)/c,0,1):0;s=a>1e-9?clamp((b*t-d)/a,0,1):0;
+  const px=ax+ux*s,pz=az+uz*s,qx=cx+vx*t,qz=cz+vz*t;return {d:Math.hypot(px-qx,pz-qz),px,pz,qx,qz,t};}
+function carCapsule(c){const a=carAxes(c),h=Math.max(0,c.box.hl-c.box.hw);return {ax:a.cx-a.fx*h,az:a.cz-a.fz*h,bx:a.cx+a.fx*h,bz:a.cz+a.fz*h,r:c.box.hw,a};}
+const cd=(c,o,t,w)=>{const m=c.obsCD||(c.obsCD={});if(m[o.id]!=null&&t-m[o.id]<w)return false;m[o.id]=t;return true;};
+function knock(c,msg,vn){c.hitT=0.6;if(c===player){if(msg)flash(msg,'','red');shake=Math.min(1,shake+0.5);thud(Math.min(1,vn/12));}}
+function obstacleHits(c,t,dt){
+  if(!OBS||c.remote||c.out)return;
+  const roadY=RH[c.idx],low=c.y-roadY;
+  // spinning pool noodles
+  for(const o of OBS.spin){if(Math.abs(c.s-o.s)>o.L+4)continue;
+    const th=o.ph+o.w*t,ux=Math.cos(th),uz=Math.sin(th),cap=carCapsule(c),yN=o.y+0.85;
+    if(c.y>yN+0.6||c.y+1.3<yN-0.4)continue;
+    const r=segSeg(cap.ax,cap.az,cap.bx,cap.bz,o.x-ux*o.L,o.z-uz*o.L,o.x+ux*o.L,o.z+uz*o.L);
+    if(r.d<cap.r+0.34){let nx=r.px-r.qx,nz=r.pz-r.qz;const l=Math.hypot(nx,nz)||1;nx/=l;nz/=l;
+      const rx=r.qx-o.x,rz=r.qz-o.z,avx=-o.w*rz,avz=o.w*rx;                      // noodle speed where it touches (ω × r)
+      const push=cap.r+0.34-r.d;c.x+=nx*push;c.z+=nz*push;
+      if(cd(c,o,t,1.0)){const vn=c.vx*nx+c.vz*nz;if(vn<0){c.vx-=nx*vn*0.35;c.vz-=nz*vn*0.35;}          // soft foam: only a third of your speed into it is soaked up
+        const as=Math.hypot(avx,avz)||1,sw=Math.max(8,as*1.4);c.vx+=avx/as*sw;c.vz+=avz/as*sw;           // ...and you're swatted the way the noodle swings
+        c.r+=(o.w>0?1:-1)*(2.2+Math.random()*1.5);c.vy=Math.max(c.vy,2.2);c.grounded=false;knock(c,'Noodled!',sw);OBS.stats.noodle++;hit(c,sw,r.qx,r.qz);}}
+    const dp=Math.hypot(c.x-o.x,c.z-o.z);if(dp<0.6+c.box.hw){const nx=(c.x-o.x)/(dp||1),nz=(c.z-o.z)/(dp||1),vn=c.vx*nx+c.vz*nz;c.x=o.x+nx*(0.6+c.box.hw);c.z=o.z+nz*(0.6+c.box.hw);if(vn<0){c.vx-=nx*vn*1.5;c.vz-=nz*vn*1.5;}}   // the centre post
+  }
+  // cannon balls
+  for(const o of OBS.cannons){if(Math.abs(c.s-o.s)>6)continue;const b=ballAt(o,t);if(!b)continue;
+    if(c.y>b.y+o.R||c.y+1.3<b.y-o.R)continue;
+    const cap=carCapsule(c),r=segSeg(cap.ax,cap.az,cap.bx,cap.bz,b.x,b.z,b.x,b.z);
+    if(r.d<o.R+cap.r&&cd(c,o,t,1.0)){const k=1/o.vb;c.vx+=b.vx*k*27;c.vz+=b.vz*k*27;c.vy=Math.max(c.vy,9.5);c.grounded=false;c.r+=(Math.random()-0.5)*6;c.ejectT=t;
+      knock(c,'BOOM!',12);OBS.stats.ball++;hit(c,12,b.x,b.z);}}
+  // pop bumpers: a kick sideways to your direction of travel, at about half the speed you hit it
+  if(OBS.bumpers.length&&c.s>S0+OBS.maze[0]-5&&c.s<S0+OBS.maze[1]+5&&low<1.4){
+    const a=carAxes(c),hl=c.box.hl,hw=c.box.hw;
+    for(const o of OBS.bumpers){if(Math.abs(o.s-c.s)>4)continue;
+      const dx=o.x-a.cx,dz=o.z-a.cz,lf=dx*a.fx+dz*a.fz,ll=dx*a.lx+dz*a.lz,cf=clamp(lf,-hl,hl),cl=clamp(ll,-hw,hw),ex=(lf-cf),el=(ll-cl),dd=Math.hypot(ex,el);
+      if(dd>=o.R)continue;
+      // push the car clear of the bumper
+      const px=a.fx*cf+a.lx*cl+a.cx,pz=a.fz*cf+a.lz*cl+a.cz;let ox=px-o.x,oz=pz-o.z;const ol=Math.hypot(ox,oz)||1;ox/=ol;oz/=ol;c.x+=ox*(o.R-dd);c.z+=oz*(o.R-dd);
+      if(!cd(c,o,t,0.3))continue;
+      const spd=Math.hypot(c.vx,c.vz),tx=spd>0.5?c.vx/spd:a.fx,tz=spd>0.5?c.vz/spd:a.fz;let nx=tz,nz=-tx;if(nx*(c.x-o.x)+nz*(c.z-o.z)<0){nx=-nx;nz=-nz;}
+      const u0=c.vx*TX[c.idx]+c.vz*TZ[c.idx],kick=Math.max(4,0.5*spd);c.vx=c.vx*0.92+nx*kick;c.vz=c.vz*0.92+nz*kick;
+      const u1=c.vx*TX[c.idx]+c.vz*TZ[c.idx],uMin=Math.max(6,0.85*u0);if(u1<uMin){c.vx+=TX[c.idx]*(uMin-u1);c.vz+=TZ[c.idx]*(uMin-u1);}   // it knocks you sideways, it doesn't stop you
+     c.r+=(Math.random()-0.5)*1.2;c.hitT=0.35;o.hitT=t;OBS.stats.bump++;
+      if(c===player){blip(1320,0.07,'square',0.14);setTimeout(()=>blip(1980,0.09,'square',0.12),50);shake=Math.min(1,shake+0.25);}
+      for(let n=0;n<6;n++)emit(o.x,o.y+1,o.z,(Math.random()-0.5)*5,2+Math.random()*2,(Math.random()-0.5)*5,0.3,0.4,[0xff3fa4,0x3fe0ff,0xffe14a][n%3]);}
+  }
+  // wind fans: close to a fan the wind drives you up to top speed fast
+  for(const o of OBS.fans){const along=c.s-o.s;if(along<-6||along>o.reach)continue;
+    const edge=Math.abs(c.d-o.side*HALFW);if(edge>HALFW*1.25)continue;
+    const prox=(1-edge/(HALFW*1.25))*(1-0.6*clamp(along/o.reach,0,1)),u=c.vx*o.tx+c.vz*o.tz,VT=49.5;
+    if(u<VT){const a=2.2*prox*(VT-u);c.vx+=o.tx*a*dt;c.vz+=o.tz*a*dt;}c.windT=0.25;
+    if(Math.random()<dt*40*prox)emit(c.x+(Math.random()-0.5)*4,c.y+0.5+Math.random()*2,c.z+(Math.random()-0.5)*4,o.tx*30,0,o.tz*30,0.15,0.35,0xffffff);}
+  // hammers over the pit: the head sweeps up through the jump; get hit and you're flung skyward
+  for(const o of OBS.hammers){if(Math.abs(c.s-o.s)>o.L+4||Math.abs(c.d)>HALFW+1.5)continue;
+    const ph=hammerAngle(o,t),hs=o.s+o.L*Math.cos(ph),hy=o.y+o.L*Math.sin(ph),dist=Math.hypot(c.s-hs,c.y+0.65-hy);
+    if(dist<o.R+1.15&&cd(c,o,t,0.8)){const vs=-o.L*o.w*Math.sin(ph),vy=o.L*o.w*Math.cos(ph);   // head speed along the course / upwards
+      const u=c.vx*o.tx+c.vz*o.tz,nu=Math.max(u,vs*1.1);c.vx+=o.tx*(nu-u);c.vz+=o.tz*(nu-u);c.vy=Math.min(14,Math.max(c.vy,Math.abs(vy)*1.1+7));c.grounded=false;c.r+=(Math.random()-0.5)*5;
+      c.y=Math.max(c.y,hy+o.R-0.3);knock(c,'WHAM!',14);OBS.stats.hammer++;hit(c,14,c.x,c.z);}}
+}
+// AI: pick a line through the bumper maze, lean towards a wind fan, stay out of a cannon's firing lane while a ball is in the air
+function aiAvoid(c,lane,LW){
+  if(!OBS||!c.ai||c.finished)return lane;
+  const s=c.s;
+  for(const o of OBS.fans){const ahead=o.s-s;if(ahead>-10&&ahead<90)return o.side*(HALFW-2.6);}
+  if(OBS.bumpers.length&&s>S0+OBS.maze[0]-40&&s<S0+OBS.maze[1]){
+    const near=OBS.bumpers.filter(o=>o.s-s>1&&o.s-s<26);if(!near.length)return lane;
+    let best=lane,bc=1e9;for(let L=-(HALFW-1.5);L<=HALFW-1.5;L+=0.5){let cost=Math.abs(L-c.lane)*0.15;for(const o of near){const g=Math.abs(L-o.d);if(g<2.5)cost+=(2.5-g)*(30-(o.s-s));}if(cost<bc){bc=cost;best=L;}}
+    return best;}
+  return lane;
+}
+function updateObstacles(t,dt){
+  if(!OBS||!OBS.vis)return;const V=OBS.vis;
+  for(const o of OBS.spin)if(o.mesh)o.mesh.rotation.y=-(o.ph+o.w*t);
+  for(const o of OBS.cannons){const b=ballAt(o,t);o.ball.visible=!!b;if(b){o.ball.position.set(b.x,b.y,b.z);o.ball.rotation.z=b.tau*6;
+      if(b.tau<0.12&&!o.fired){o.fired=true;o.recoil=1;if(player&&Math.abs(player.s-o.s)<120)thud(0.5*(1-Math.abs(player.s-o.s)/120));for(let n=0;n<10;n++)emit(o.x+o.nx*o.side*(RAIL+5),o.y+2,o.z+o.nz*o.side*(RAIL+5),(Math.random()-0.5)*4,2+Math.random()*3,(Math.random()-0.5)*4,1+Math.random(),0.8,0xdddddd);}
+      if(b.tau>0.2)o.fired=false;}
+    if(o.barrel){o.recoil=Math.max(0,(o.recoil||0)-dt*3);o.barrel.position.x=-o.recoil*0.9;}}
+  if(V.bump){const M=V.M,col=V.col;let dirty=false;
+    OBS.bumpers.forEach((o,k)=>{const age=t-o.hitT,p=age>=0&&age<0.35?1-age/0.35:0;if(p>0||o.lit){o.lit=p>0;const sc=1+0.35*p;M.compose(V.v.set(o.x,o.y+0.95,o.z),V.q,V.sv.set(o.R*sc,1.1*(1+0.2*p),o.R*sc));V.bump.setMatrixAt(k,M);
+        V.bump.setColorAt(k,col.copy(o.col).lerp(V.white,p*0.8));dirty=true;}});
+    if(dirty){V.bump.instanceMatrix.needsUpdate=true;V.bump.instanceColor.needsUpdate=true;}}
+  for(const o of OBS.fans)if(o.blades)o.blades.rotation.z+=dt*18;
+  for(const o of OBS.hammers)if(o.mesh)o.mesh.rotation.x=-hammerAngle(o,t);
+}
 /* ================= AI ================= */
 function aiDrive(c,dt){
   const spd=Math.hypot(c.vx,c.vz),i=c.idx;
@@ -2145,7 +2526,8 @@ function aiDrive(c,dt){
   const bo=SPL[i]>0?(c.side||1)*SPL[i]:0,rd=o=>o.d-bo;
   const la=Math.min(NS-1,i+Math.round((6+spd*0.55)/DSA));
   const ka=KS[Math.min(NS-1,i+Math.round((14+spd*0.9)/DSA))];
-  let lane=c.finished?0:clamp(c.baseLane+ka*160,-4.2,4.2);
+  const LW=HALFW/6;   // lanes scale with the road width
+  let lane=c.finished?0:clamp(c.baseLane*LW+ka*160,-4.2*LW,4.2*LW);
   // --- slipstream tactics: on a clear straight, tuck in behind a car, ride the tow, then pull out to pass
   if(c.ai&&!c.finished){
     if(c.towCD>0)c.towCD-=dt;
@@ -2155,7 +2537,7 @@ function aiDrive(c,dt){
       const L=c.tow.t,gap=L.s-c.s;c.tow.time+=dt;
       if(!straight||gap<5.5||gap>32||c.tow.time>c.tow.max||L.finished||spd<DRAFT_MIN_V*0.9){
         const side=rd(L)>0.5?-1:rd(L)<-0.5?1:(Math.random()<0.5?-1:1);                // pull out towards the side with more room
-        c.passLane=clamp(rd(L)+side*3.0,-4.4,4.4);c.passT=gap<14?3.5:0;c.tow=null;c.towCD=4+Math.random()*6;
+        c.passLane=clamp(rd(L)+side*3.0,-4.4*LW,4.4*LW);c.passT=gap<14?3.5:0;c.tow=null;c.towCD=4+Math.random()*6;
       }
     }else if(c.towCD<=0&&straight&&spd>DRAFT_MIN_V){
       let L=null,bg=1e9;for(const o of cars){if(o===c)continue;const gap=o.s-c.s;if(gap>7&&gap<30&&Math.abs(rd(o)-rd(c))<4.5&&gap<bg){L=o;bg=gap;}}
@@ -2174,14 +2556,15 @@ function aiDrive(c,dt){
       if(ds>0&&ds<8&&Math.abs(dd)<2){const closing=spd-Math.hypot(o.vx,o.vz);if(closing>1)guard=Math.max(guard,0.3);}
     }
   }
-  lane=clamp(lane,-4.6,4.6);c.lane=lerp(c.lane,lane,1-Math.exp(-dt*(c.tow?1.1:1.4)));
+  lane=aiAvoid(c,lane,LW);
+  lane=clamp(lane,-4.6*LW,4.6*LW);c.lane=lerp(c.lane,lane,1-Math.exp(-dt*(c.tow?1.1:1.4)));
   const lw=c.lane+(SPL[la]>0?(c.side||1)*SPL[la]:0),tx=PX[la]+NX[la]*lw,tz=PZ[la]+NZ[la]*lw;
   const err=wrapA(Math.atan2(tx-c.x,tz-c.z)-c.psi);
   const tgt=clamp(err*2.6-c.r*0.18,-1,1);
   c.steerIn+=clamp(tgt-c.steerIn,-dt*5,dt*5);
   let vAllow=99;const muA=1.05*ARC_GRIP*c.dsg.grip*0.86*c.skill,dec=7.2*c.skill;
   const hz=Math.min(NS-1,i+Math.round((30+spd*3.2)/DSA));
-  for(let k=i+1;k<=hz;k+=2){const vk=Math.sqrt(muA*(SURF[k]?0.85:1)*G_/Math.max(Math.abs(KS[k]),0.0012));const va=Math.sqrt(vk*vk+2*dec*(k-i)*DSA);if(va<vAllow)vAllow=va;}
+  for(let k=i+1;k<=hz;k+=2){const vk=Math.sqrt(muA*(SURF[k]?DIRT_GRIP:1)*G_/Math.max(Math.abs(KS[k]),0.0012));const va=Math.sqrt(vk*vk+2*dec*(k-i)*DSA);if(va<vAllow)vAllow=va;}
   c.brake=spd>vAllow+0.4?clamp((spd-vAllow)/3,0.2,1):0;
   c.brake=Math.max(c.brake,guard);
   if(c.finished)c.brake=spd>1.5?1:0;
@@ -2253,7 +2636,7 @@ function updateAudio(){
   snd.roll.f.frequency.setTargetAtTime((c&&!c.onRoad?380:c&&c.onDirt?300:100)+spd*10,t,0.1);
   snd.wind.g.gain.setTargetAtTime(Math.min(0.05,Math.pow(spd/55,1.6)*0.06)*(1-0.3*(c?Math.min(1,c.draft*1.5):0)),t,0.2);   // soft wind rush, 30% quieter in a slipstream
   snd.wind.f.frequency.setTargetAtTime(220+spd*5,t,0.2);
-  const sk=racing&&c.onRoad&&ground?Math.min(1,c.slip)*(c.onDirt?0.35:1):0;   // tyres barely squeal on dirt
+  const sk=racing&&c.onRoad&&!c.onDirt&&ground?Math.min(1,c.slip):0;   // no tyre squeal on dirt
   snd.skid.g.gain.setTargetAtTime(0,t,0.06);
   const Q=snd.sq;
   Q.g.gain.setTargetAtTime(0.35*Math.pow(sk,1.3),t,sk>Q.prev?0.04:0.09);        // held slide: looped squeal, louder the harder you slide
@@ -2275,7 +2658,7 @@ function updateAudio(){
       if(k&&racing){
         const dist=Math.hypot(k.x-c.x,k.y-c.y,k.z-c.z);att=dist>160?0:1/(1+(dist/14)**2);
         ks=Math.hypot(k.vx,k.vz);const gnd=k.grounded||k.airT<0.25;
-        ksk=k.onRoad&&gnd?Math.min(1,k.slip):0;gr=!k.onRoad&&gnd&&ks>3?Math.min(1,ks/25)*0.42:0;
+        ksk=k.onRoad&&!k.onDirt&&gnd?Math.min(1,k.slip):0;gr=!k.onRoad&&gnd&&ks>3?Math.min(1,ks/25)*0.42:0;
         if(V.pan){const cx=k.x-camera.position.x,cz=k.z-camera.position.z;V.pan.pan.setTargetAtTime(clamp((cx*rx+cz*rz)/(Math.hypot(cx,cz)+4),-1,1)*0.85,t,0.1);}
       }
       V.sqG.gain.setTargetAtTime(0.35*Math.pow(ksk,1.3)*att*NPC_VOL,t,ksk>V.prev?0.04:0.09);
@@ -2342,10 +2725,13 @@ function updateCamera(dt,snap){
     const sy=Math.sin(camYaw),cy=Math.cos(camYaw);
     const gi=groundOf(c);
     // steep downhill (the City Scape start): the road behind is higher, so lift the camera and tilt it down, smoothly
-    const dh=inGap(c.idx)?0:Math.max(0,-gi.grade*(Math.sin(c.psi)*TX[c.idx]+Math.cos(c.psi)*TZ[c.idx]));
-    camSteep=snap?dh:lerp(camSteep,dh,1-Math.exp(-dt*2.5));
+    // uses the course's own slope over ~12 m (not kicker ramps or bumps), and only while the wheels are down:
+    // leaving a ramp, the sudden drop behind the lip used to jerk the camera up and tilt it down mid-jump
+    let i=c.idx,ia=Math.max(0,i-3),ib=Math.min(NS-1,i+3);for(const g of GAPS){if(ib>g[0]&&ia<=g[0]){ib=g[0];ia=Math.max(0,ib-6);}if(ia<g[1]&&ib>=g[1]){ia=g[1];ib=Math.min(NS-1,ia+6);}}const baseG=(RHB[ib]-RHB[ia])/((ib-ia)*DSA||1);
+    const dh=inGap(i)?0:Math.max(0,-baseG*(Math.sin(c.psi)*TX[i]+Math.cos(c.psi)*TZ[i]));
+    if(snap)camSteep=dh;else if(c.grounded)camSteep=lerp(camSteep,dh,1-Math.exp(-dt*2.5));
     const k=smoothstep(0.1,0.3,camSteep),lift=k*(camSteep*cm.d+1.0);
-    const ty=Math.max(c.y+cm.h+lift,gi.h+1.3);
+    const ty=c.grounded||snap?Math.max(c.y+cm.h+lift,gi.h+1.3):c.y+cm.h+lift;
     camY=snap?ty:lerp(camY,ty,1-Math.exp(-dt*10));
     camera.position.set(c.x-sy*cm.d,camY,c.z-cy*cm.d);
     camLook.set(c.x+sy*cm.look,c.y+cm.lh-k*camSteep*cm.look*0.55,c.z+cy*cm.look);
@@ -2385,7 +2771,8 @@ function updateCarVisual(c,dt){
   const dive=clamp(-c.ax*0.006,-0.05,0.06);
   c.roll=lerp(c.roll,clamp(c.latA*0.008*c.dsg.roll,-0.13,0.13),1-Math.exp(-dt*6));
   c.bounceV+=(-c.bounce*160-c.bounceV*9)*dt;c.bounce+=c.bounceV*dt;c.bounce=clamp(c.bounce,-0.2,0.2);
-  M.root.position.set(c.x,c.y,c.z);M.root.rotation.set(c.pitch,c.psi,0);
+  const bk=BANK[c.idx]&&c.grounded?BANK[c.idx]*(Math.cos(c.psi)*NX[c.idx]-Math.sin(c.psi)*NZ[c.idx]):0;c.bankR=lerp(c.bankR||0,Math.atan(bk),1-Math.exp(-dt*10));
+  M.root.position.set(c.x,c.y,c.z);M.root.rotation.set(c.pitch,c.psi,c.bankR);
   M.body.rotation.z=c.roll;M.body.rotation.x=dive;M.body.position.y=c.bounce;
   const u=c.vx*Math.sin(c.psi)+c.vz*Math.cos(c.psi);
   c.spin+=u/0.45*dt;for(let k=0;k<4;k++)M.wheels[k].rotation.x=(k>=2&&c.handbrake)?M.wheels[k].rotation.x:c.spin;
@@ -2474,7 +2861,7 @@ function showScreen(name){
 }
 let worldBuilt=false;
 function showHome(){
-  $('tag').innerHTML='Gravity-only racing, no engines. <b>Three tracks</b>: Pebble Hill, City Scape and Nomahe.';
+  $('tag').innerHTML='Gravity-only racing, no engines. <b>Four tracks</b>: Pebble Hill, City Scape, Nomahe and Tokiyama.';
   showScreen('home');
 }
 function renderGarage(){
@@ -2827,7 +3214,7 @@ function netRace(m){
 }
 function netPrewarm(){
   try{
-    cars.forEach(c=>{const g=GRID[c.slot]||GRID[0];placeOnTrack(c,S0+g[0],g[1],0);updateCarVisual(c,0);});
+    cars.forEach(c=>{const g=GRID[c.slot]||GRID[0];placeOnTrack(c,S0+g[0],g[1]*HALFW/6,0);updateCarVisual(c,0);});
     updateCamera(0,true);setEnvMaps(NIGHT?ENVN:ENV);renderer.compile(scene,camera);renderer.render(scene,camera);
   }catch(e){console.error(e);}
 }
@@ -3069,24 +3456,27 @@ function tick(dt){
     }
     updateDraft(dt);
     const sub=Math.max(1,Math.ceil(dt/(1/240)));const h=dt/sub;
-    for(let s=0;s<sub;s++){for(const c of cars)if(!c.remote)stepCar(c,h);collide();}
+    for(let s=0;s<sub;s++){for(const c of cars)if(!c.remote)stepCar(c,h);if(OBS){const ot=raceT-dt+(s+1)*h;for(const c of cars)if(!c.remote)obstacleHits(c,ot,h);}collide();}
     for(const c of cars){
       if(c.remote)continue;
       if(!c.finished&&c.s>=FINISH_S){c.finished=true;c.finishTime=raceT;finishCount++;c.place=finishCount;if(c===player&&NET.inRace)netSend({t:'fin',time:raceT});
         if(c===player){const p=standings().indexOf(player)+1;flash(p===1?'WINNER!':'FINISH!',p+ord(p)+' · '+fmt(raceT),p===1?'':'white');blip(660,0.2,'square',0.2);setTimeout(()=>blip(990,0.4,'square',0.2),180);$('pushBtn').hidden=true;}}
       const spd=Math.hypot(c.vx,c.vz);
       if(!c.finished&&raceT>5&&spd<1){c.stuckT+=dt;if(c.stuckT>3)respawn(c);}else c.stuckT=0;
+      if(c.progT==null||raceT<c.progT){c.progT=raceT;c.progS=c.s;}else if(raceT-c.progT>5){if(!c.finished&&raceT>8&&c.s-c.progS<8)respawn(c);c.progT=raceT;c.progS=c.s;}   // gone nowhere for 5 s: back on the course
     }
     if(NET.inRace)netTick(dt);
     if(player.finished){afterFinishT+=dt;if(!resultsShown&&afterFinishT>2.6)showResults();if(resultsShown){tableT-=dt;if(tableT<=0){tableT=0.3;renderTable();}}}
     if(!player.finished&&!finalShown&&FINISH_S-player.s<400&&!NET.results){finalShown=true;flash('Final stretch!');}
   }
   for(const c of cars)updateCarVisual(c,dt);
+  if(OBS)updateObstacles(obsClock(),dt);
   updateCamera(dt,false);
   updateLod();
   updateHUD(dt);
 }
 function ambient(dt,now){
+  if(OBS&&state==='menu')updateObstacles(now/1000,dt);
   if(world.windmill)world.windmill.rotation.z+=dt*0.9;
   if(world.antTip)world.antTip.visible=(now%1600)<800;
   for(const c of (world.clouds||[]))c.position.x+=dt*2;
@@ -3106,7 +3496,7 @@ function init(){
   $('loading').hidden=true;onResize();
   showHome();
   requestAnimationFrame(frame);
-  window.__phd={cars,get rinfo(){return {calls:renderer.info.render.calls,tris:renderer.info.render.triangles}},get player(){return player},get audio(){return snd},get state(){return state},get LEN(){return LEN},get minRad(){return minRad},get DROP(){return DROP},get FINISH_S(){return FINISH_S},get CORNERS(){return CORNERS},get TRACK(){return TRACK},get JUMPS(){return JUMPS},get TUNNELS(){return TUNNELS},get RH(){return RH},startRace,startQuick,input,get scene(){return scene},garageSpin:(a)=>{garage.tt.rotation.y=a;garage.userT=99;},get collCount(){return collCount},placeOnTrack,get KS(){return KS},get S(){return S},get DSA(){return DSA},sim:(sec)=>{for(let t=0;t<sec;t+=1/60)tick(1/60);},shot:(p,l)=>{camera.position.set(p[0],p[1],p[2]);camera.lookAt(l[0],l[1],l[2]);camera.updateMatrixWorld();renderer.render(scene,camera);return renderer.domElement.toDataURL('image/png');},get camera(){return camera},get NET(){return NET},netLag:(l,n)=>netLag(l,n),netRemotes:(now,dt)=>netRemotes(now,dt),newCar:(o)=>newCar(o),groundAt:(x,z)=>{const c={x,z,idx:0,d:0,along:0};c.idx=nearest(x,z,80);locate(c);return groundOf(c).h;},get countT(){return countT},get raceT(){return raceT},set noLoop(v){dbgNoLoop=v},get cars2(){return cars},get world(){return world},get PX(){return PX},get PZ(){return PZ},get RHB(){return RHB},get NX(){return NX},get NZ(){return NZ}};
+  window.__phd={cars,get OBS(){return OBS},get GAPS(){return GAPS},get HALFW(){return HALFW},get rinfo(){return {calls:renderer.info.render.calls,tris:renderer.info.render.triangles}},get player(){return player},get audio(){return snd},get state(){return state},get LEN(){return LEN},get minRad(){return minRad},get DROP(){return DROP},get FINISH_S(){return FINISH_S},get CORNERS(){return CORNERS},get TRACK(){return TRACK},get JUMPS(){return JUMPS},get TUNNELS(){return TUNNELS},get RH(){return RH},startRace,startQuick,input,get scene(){return scene},garageSpin:(a)=>{garage.tt.rotation.y=a;garage.userT=99;},get collCount(){return collCount},placeOnTrack,get KS(){return KS},get S(){return S},get DSA(){return DSA},sim:(sec)=>{for(let t=0;t<sec;t+=1/60)tick(1/60);},shot:(p,l)=>{camera.position.set(p[0],p[1],p[2]);camera.lookAt(l[0],l[1],l[2]);camera.updateMatrixWorld();renderer.render(scene,camera);return renderer.domElement.toDataURL('image/png');},get camera(){return camera},get NET(){return NET},netLag:(l,n)=>netLag(l,n),netRemotes:(now,dt)=>netRemotes(now,dt),newCar:(o)=>newCar(o),groundAt:(x,z)=>{const c={x,z,idx:0,d:0,along:0};c.idx=nearest(x,z,80);locate(c);return groundOf(c).h;},get countT(){return countT},get raceT(){return raceT},set noLoop(v){dbgNoLoop=v},get cars2(){return cars},get world(){return world},get PX(){return PX},get PZ(){return PZ},get RHB(){return RHB},get NX(){return NX},get NZ(){return NZ}};
 }
 const fontsReady=(document.fonts&&document.fonts.load)?Promise.all([document.fonts.load('64px "Rammetto One"'),document.fonts.load('800 20px "M PLUS Rounded 1c"')]).catch(()=>{}):Promise.resolve();
 Promise.race([fontsReady,new Promise(r=>setTimeout(r,2500))]).then(()=>setTimeout(init,30));
