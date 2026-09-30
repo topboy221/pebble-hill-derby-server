@@ -13,7 +13,7 @@ const PORT = +process.env.PORT || 8080;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 // the game page: public/pebble-hill-derby.html (an older public/index.html still works as a fallback)
 const GAME_FILE = ['pebble-hill-derby.html', 'index.html'].map(f => path.join(__dirname, 'public', f)).find(f => fs.existsSync(f)) || path.join(__dirname, 'public', 'pebble-hill-derby.html');
-const TRACK_IDS = ['pebble', 'city', 'nomahe', 'tokiyama'];           // keep in sync with TRACKS in the game
+const TRACK_IDS = ['pebble', 'city', 'nomahe', 'tokiyama', 'whitecow'];           // keep in sync with TRACKS in the game
 const MAX_PLAYERS = 12;
 const TIMES = {                                   // seconds
   publicWait: 20,        // quick-join lobby: countdown once 2+ racers are in
