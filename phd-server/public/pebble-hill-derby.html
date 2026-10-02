@@ -281,6 +281,7 @@ tr.me td{background:#fff3c4}
       <button class="btn mmb" data-track="tokiyama">Tokiyama<small>4.7 km at dusk · Tokyo Tower drop · 5 pinball obstacles</small></button>
       <button class="btn mmb" data-track="whitecow">Whitecow Valley<small>5.1 km alpine · steep start · snow · spectator bridge · ice cave</small></button>
       <button class="btn mmb" data-track="aloma">Aloma<small>5.9 km volcano island · twin split · lava vent · rock field · lava boulders</small></button>
+      <button class="btn mmb" data-track="mesozon">Mesozon<small>6.1 km rainforest in the rain · giant tree start · vines · leaf jumps · rope bridge</small></button>
     </nav>
   </div>
 
@@ -561,6 +562,8 @@ let SPL=new Float32Array(1),SURF=new Uint8Array(1),GAPS=[],SPLMAX=0,BANK=new Flo
 // Aloma: SPLH = height of the left branch above the course line where the two parallel roads go over opposite hills (right branch = -SPLH);
 // ROCKY = the bumpy volcanic-rock stretch
 let SPLH=new Float32Array(1),ROCKY=new Uint8Array(1);
+// Mesozon: VOID = rope bridge (no barriers, nothing either side of the deck), LEAFZ = on a leaf, LINEH = the course line before the ravine was cut
+let VOID=new Uint8Array(1),LEAFZ=new Uint8Array(1),LINEH=new Float32Array(1);
 // banking: BANK = sideways slope of the road (height change per metre across, measured from the centre of the branch you are on)
 const bankAt=(i,d)=>{const hs=SPLH[i]?(d<0?-SPLH[i]:SPLH[i]):0,b=BANK[i];if(!b)return hs;const sp=SPL[i],dc=sp>0?(d<0?-sp:sp):0;return hs+b*clamp(d-dc,-(RAIL+1),RAIL+1);};
 // the same, blended smoothly between samples, plus the slopes a car needs: along the course (ds) and across it (dd)
@@ -575,6 +578,7 @@ const DIRT_GRIP=0.55;   // dirt keeps 55% of tarmac grip
 const SURF_GRIP=[1,DIRT_GRIP,0.5,0.28];   // tarmac, dirt, packed snow (loose but steerable), ice (very little)
 const roadD=(i,d)=>{const sp=SPL[i];return sp>0?Math.abs(Math.abs(d)-sp):Math.abs(d);};   // lateral distance from the nearest road centre
 const inGap=i=>GAPS.some(g=>i>g[0]&&i<g[1]);
+const T_LEAVES=()=>!!(TRACK&&TRACK.leafList);
 // a course drawn like a turtle: [length m, turn degrees (+ = towards +x)] pieces → control points every 10 m
 function turtleCP(segs){let x=0,z=0,a=0;const pts=[[0,0]];
   for(const [L,t] of segs){const n=Math.max(1,Math.round(L/10)),da=t*Math.PI/180/n,dl=L/n;
@@ -654,18 +658,52 @@ const TRACKS={
     jumpList:[{s:3905,h:1.4,len:16,kind:'snow'},{s:3975,h:1.4,len:16,kind:'snow'},{s:4045,h:1.4,len:16,kind:'snow'},{s:4115,h:1.2,len:14,kind:'snow'}],
     finishAt:5100,
     makeNatural:(b,tc,RB)=>snowNatural(b,RB)},
-  aloma:{id:'aloma',name:'Aloma',env:'island',rail:HALFW+0.12,railGap:0.05,preGrade:0.22,maxGrade:0.3,blurb:'Volcano island · twin split · lava vent · lava rocks · boulders',
+  aloma:{id:'aloma',name:'Aloma',env:'island',rail:HALFW+0.02,railGap:0.05,preGrade:0.22,maxGrade:0.3,blurb:'Volcano island · twin split · lava vent · lava rocks · boulders',
     // off the crater rim of a volcano, straight down its flank into the twin split, then spiralling round the island down to the beach
     cp:[[0,0],[0,30],[0,60],[0,90],[0,120],[0,150],[0,180],[0,210],[0,240],[0,270],[0,300],[0,330],[0,360],[0,390],[0,420],[0,450],[0,480],[0,510],[0,540],[1,570],[2,600],[5,630],[9,660],[15,689],[23,718],[32,746],[43,774],[56,801],[71,828],[87,853],[105,877],[124,900],[144,922],[166,942],[190,961],[214,979],[239,995],[266,1010],[293,1022],[322,1030],[351,1034],[381,1034],[411,1031],[441,1027],[471,1024],[501,1025],[531,1027],[561,1029],[591,1027],[620,1022],[649,1013],[677,1002],[704,990],[731,977],[758,964],[784,949],[810,935],[836,919],[862,903],[887,887],[912,870],[936,852],[960,834],[984,816],[1007,797],[1029,777],[1050,755],[1067,731],[1081,704],[1092,676],[1101,648],[1110,619],[1122,592],[1137,566],[1154,541],[1171,516],[1189,492],[1206,467],[1223,442],[1239,417],[1256,392],[1273,368],[1292,345],[1312,322],[1333,300],[1352,278],[1370,254],[1386,228],[1399,201],[1411,174],[1421,146],[1431,117],[1439,88],[1445,59],[1447,29],[1446,-1],[1444,-31],[1441,-61],[1440,-91],[1440,-121],[1442,-151],[1445,-181],[1448,-210],[1450,-240],[1452,-270],[1453,-300],[1456,-330],[1461,-360],[1470,-388],[1481,-416],[1493,-444],[1503,-472],[1509,-502],[1511,-531],[1509,-561],[1506,-591],[1501,-621],[1496,-650],[1490,-680],[1484,-709],[1476,-738],[1468,-767],[1460,-796],[1451,-825],[1442,-853],[1432,-881],[1421,-910],[1410,-937],[1399,-965],[1387,-992],[1375,-1020],[1364,-1048],[1356,-1077],[1351,-1106],[1349,-1136],[1347,-1166],[1344,-1196],[1336,-1225],[1325,-1253],[1311,-1279],[1294,-1305],[1277,-1329],[1260,-1353],[1240,-1376],[1219,-1397],[1194,-1415],[1168,-1429],[1140,-1440],[1112,-1450],[1084,-1461],[1058,-1476],[1033,-1493],[1010,-1512],[987,-1531],[964,-1550],[941,-1570],[918,-1589],[896,-1609],[876,-1632],[859,-1656],[844,-1682],[829,-1708],[813,-1733],[793,-1756],[771,-1776],[747,-1794],[721,-1810],[695,-1824],[668,-1838],[641,-1850],[612,-1858],[582,-1862],[552,-1862],[522,-1859],[492,-1856],[462,-1856],[433,-1859],[403,-1865],[374,-1873],[345,-1880],[316,-1889],[288,-1898],[260,-1910],[234,-1924],[208,-1939],[183,-1955],[156,-1970],[129,-1982],[100,-1990],[70,-1996],[41,-2000],[11,-2003],[-19,-2005],[-49,-2007],[-79,-2008],[-109,-2009],[-139,-2009],[-169,-2008],[-199,-2008],[-229,-2006],[-259,-2004],[-289,-2002],[-318,-1999],[-348,-1996],[-378,-1992],[-408,-1987]],
     drop:{end:520,extra:150,pow:1.25},
     profile:[[0,760],[480,676],[1115,585],[1700,505],[2250,440],[3050,330],[3480,275],[3720,245],[4500,150],[5300,62],[5900,8],[6150,4]],
     split:{from:470,to:1115,ease:45,off:9,bumps:{A:2.2,len:110}},   // two parallel roads, hills on one where the other dips
-    rocky:[2250,3050],
-    obstacles:{vents:[{s:1700,R:3.1,stretch:1.6,seed:7}],
+    rocky:[[2250,3050],[4900,5400]],   // two rock fields; the second ends 500 m before the flag
+    lava:{from:3510,to:3760,half:HALFW,VT:53},   // a lava stream over the whole road through the boulder field: it carries you along
+    obstacles:{vents:[{s:1700,R:5.6,stretch:1.5,seed:7,gap:[0.8,2.4]}]   /* wall to wall: no way round it */,
       rocks:[{s:3510,period:3.1,ph:0.3,seed:1},{s:3575,period:3.35,ph:1.6,seed:2},{s:3640,period:3.0,ph:0.9,seed:3},{s:3705,period:3.25,ph:2.1,seed:4}]},
     finishAt:5900,
-    makeNatural:(b,tc,RB)=>islandNatural(b)}
+    makeNatural:(b,tc,RB)=>islandNatural(b)},
+  mesozon:{id:'mesozon',name:'Mesozon',env:'jungle',rail:HALFW+0.02,railGap:0.05,preGrade:0.22,maxGrade:0.3,grip:0.6,rain:true,blurb:'Rainforest in the rain · giant tree start · vines · leaf jumps · rope bridge',
+    // off the crown of a giant tree, down a branch and straight through the trunk of another, through the rainforest in the rain:
+    // swinging vines, a ravine crossed by jumping from leaf to leaf, a 600 m rope bridge over a river valley
+    turtle:[[520,0],[80,0],[150,40],[150,0],[160,-50],[120,0],[150,35],[300,0],[150,-45],[180,0],[160,50],[150,0],[140,-30],[350,0],[160,45],[160,0],[160,-45],[120,0],[650,0],[170,50],[200,0],[160,-55],[200,0],[170,45],[180,0],[150,-40],[220,0],[160,40],[250,0],[150,-30],[300,0]],
+    drop:{end:520,extra:150,pow:1.25},
+    profile:[[0,640],[500,580],[1300,480],[2480,330],[2692,303],[3390,225],[3990,200],[4800,125],[5500,60],[6100,8],[6320,4]],
+    tunnelS:[540,590],                                  // the hole through the trunk of the massive tree
+    leaves:{s:2480,n:5,len:28,gap:12,depth:30},         // the road ends; five giant leaves, each lower than the last; then the road again
+    ropeBridge:[3390,3990],                             // planks on ropes, nothing at the sides
+    obstacles:{vines:[{s:1420,period:3.6,ph:0.0},{s:1455,period:3.9,ph:1.3},{s:1490,period:3.4,ph:2.4},{s:1525,period:4.1,ph:0.7},{s:1560,period:3.7,ph:1.9},{s:1595,period:3.5,ph:3.0}]},
+    finishAt:6100,
+    makeNatural:(b,tc,RB)=>jungleNatural(b,RB)}
 };
+// Mesozon ground: rainforest floor following the course, wooded hills rising away from it, a deep ravine under the leaves
+// and a wide river valley under the rope bridge
+function jungleNatural(b,RB){
+  const T=TRACK,cs=40,gx0=b.minX-700,gz0=b.minZ-700,nx=Math.ceil((b.maxX-b.minX+1400)/cs)+1,nz=Math.ceil((b.maxZ-b.minZ+1400)/cs)+1;
+  const G=new Float32Array(nx*nz),DE=new Float32Array(nx*nz),SB=new Float32Array(nx*nz);
+  for(let j=0;j<nz;j++)for(let i=0;i<nx;i++){const x=gx0+i*cs,z=gz0+j*cs;let ws=0,hs=0,bd=1e18,bh=0,sb=0;
+    for(let k=I0;k<NS;k+=3){const dx=x-PX[k],dz=z-PZ[k],d2=dx*dx+dz*dz;if(d2<bd){bd=d2;bh=RB[k];sb=S[k]-S0;}if(d2<90000){const w=1/(d2+900);ws+=w;hs+=w*RB[k];}}
+    const q=j*nx+i;G[q]=ws>0?hs/ws:bh;DE[q]=Math.sqrt(bd);SB[q]=sb;}
+  const bil=(A,x,z)=>{const fx=clamp((x-gx0)/cs,0,nx-1.001),fz=clamp((z-gz0)/cs,0,nz-1.001),i=Math.floor(fx),j=Math.floor(fz),u=fx-i,v=fz-j;
+    return lerp(lerp(A[j*nx+i],A[j*nx+i+1],u),lerp(A[(j+1)*nx+i],A[(j+1)*nx+i+1],u),v);};
+  const cuts=[];   // [from, to, depth, half-width]: valleys crossing the course
+  if(T.ropeBridge)cuts.push([T.ropeBridge[0],T.ropeBridge[1],55,700]);
+  if(T.leaves){const q=T.leaves,L=q.n*q.len+(q.n+1)*q.gap;cuts.push([q.s,q.s+L,q.depth,260]);}
+  T.cut=(sb,de)=>{let d=0;for(const [a,b2,D,W] of cuts){if(sb<a-60||sb>b2+60)continue;const u=clamp((sb-a)/(b2-a),0,1),edge=smoothstep(a-30,a+6,sb)*(1-smoothstep(b2-6,b2+30,sb));
+      d=Math.max(d,D*Math.pow(Math.sin(Math.PI*clamp(u*0.9+0.05,0,1)),0.45)*edge*(1-smoothstep(W*0.6,W,de)));}return d;};
+  const base=(x,z)=>{const de=bil(DE,x,z),sb=bil(SB,x,z),t=clamp((de-24)/260,0,1);
+    let h=Math.max(4,bil(G,x,z))+2.5*Math.sin(x*0.013)*Math.cos(z*0.011)+1.4*Math.sin(x*0.031+z*0.02);
+    h+=80*Math.pow(t,1.3)*(0.75+0.25*Math.sin(x*0.006+z*0.004))+10*t*Math.sin(x*0.021)*Math.cos(z*0.019);   // forested hills either side
+    return h-T.cut(sb,de);};
+  return {natural:base,road:base,hill:()=>0};
+}
 // Aloma ground: a volcano island. Each direction out from the crater is pinned to where the road crosses it, so the slopes
 // rise to the crater above the road and fall to the sea below it; next to the road the land follows the road
 function islandNatural(b){
@@ -760,12 +798,12 @@ function loadTrack(T){
   S=new Float32Array(NS);RH=new Float32Array(NS);RHB=new Float32Array(NS);KS=new Float32Array(NS);ELEV=new Float32Array(NS);
   for(let i=0;i<NS;i++){PX[i]=pts[i].x;PZ[i]=pts[i].z;S[i]=i*DSA;}
   I0=Math.round(PRE/DSA);S0=S[I0];const L0=LEN-S0,rs=i=>S[i]-S0,H=RHB.subarray(I0);
-  SPL=new Float32Array(NS);SURF=new Uint8Array(NS);GAPS=[];SPLMAX=0;NORAIL=new Uint8Array(NS);SPLH=new Float32Array(NS);ROCKY=new Uint8Array(NS);
+  SPL=new Float32Array(NS);SURF=new Uint8Array(NS);GAPS=[];SPLMAX=0;NORAIL=new Uint8Array(NS);SPLH=new Float32Array(NS);ROCKY=new Uint8Array(NS);VOID=new Uint8Array(NS);LEAFZ=new Uint8Array(NS);LINEH=new Float32Array(NS);
   RAILX=new Float32Array(NS);
   if(T.wideRail)for(const [a,b,w] of T.wideRail)for(let i=0;i<NS;i++){const sv=rs(i);RAILX[i]=Math.max(RAILX[i],w*smoothstep(a-30,a,sv)*(1-smoothstep(b,b+30,sv)));}   // barriers moved out (behind the noodle posts)
   if(T.split){const q=T.split;SPLMAX=q.off;for(let i=0;i<NS;i++){const sv=rs(i);SPL[i]=q.off*smoothstep(q.from,q.from+q.ease,sv)*(1-smoothstep(q.to-q.ease,q.to,sv));if(SPL[i]<0.05)SPL[i]=0;}}
   if(T.split&&T.split.bumps){const q=T.split,bq=q.bumps;for(let i=0;i<NS;i++){if(SPL[i]<=RAIL+0.5)continue;const sv=rs(i);SPLH[i]=bq.A*Math.sin(2*Math.PI*(sv-q.from-q.ease)/bq.len)*smoothstep(RAIL+0.5,q.off-0.2,SPL[i]);}}
-  if(T.rocky)for(let i=0;i<NS;i++){const sv=rs(i);ROCKY[i]=sv>=T.rocky[0]&&sv<T.rocky[1]?1:0;}
+  if(T.rocky)for(let i=0;i<NS;i++){const sv=rs(i);ROCKY[i]=T.rocky.some(q=>sv>=q[0]&&sv<q[1])?1:0;}
   if(T.dirt)for(let i=0;i<NS;i++){const sv=rs(i);SURF[i]=sv>=T.dirt[0]&&sv<T.dirt[1]?1:0;}
   if(T.snow)for(let i=0;i<NS;i++){const sv=rs(i);if(sv>=T.snow[0]&&sv<T.snow[1])SURF[i]=2;}
   if(T.ice)for(let i=0;i<NS;i++){const sv=rs(i);if(sv>=T.ice[0]&&sv<T.ice[1])SURF[i]=3;}
@@ -808,13 +846,26 @@ function loadTrack(T){
       const ph=(sv-q.from)/q.len;if(Math.floor(ph)%2===0)RHB[i]+=env*q.A*Math.sin(2*Math.PI*ph);}   // a hill on every other wave, flat between
   }
   if(T.rocky){ // volcanic rock field: a jumble of short sharp humps and dips under the wheels
-    const [a,b2]=T.rocky;for(let i=0;i<NS;i++){const sv=rs(i);if(sv<a||sv>b2)continue;const env=smoothstep(a,a+25,sv)*(1-smoothstep(b2-25,b2,sv));
+    for(const [a,b2] of T.rocky)for(let i=0;i<NS;i++){const sv=rs(i);if(sv<a||sv>b2)continue;const env=smoothstep(a,a+25,sv)*(1-smoothstep(b2-25,b2,sv));
       RHB[i]+=env*(0.2*Math.sin(2*Math.PI*sv/29+0.7)+0.1*Math.sin(2*Math.PI*sv/17+2.1)+0.05*Math.sin(2*Math.PI*sv/9.5+4.0));}
   }
   if(T.gaps)for(const g of T.gaps){ // a dip with no road: over a ravine, or down to the river bed
     const a=Math.round((S0+g.lip)/DSA),b2=Math.round((S0+g.lip+g.len)/DSA);GAPS.push([a,b2]);
     for(let i=a+1;i<b2;i++){const u=(i-a)/(b2-a),w=Math.pow(Math.sin(Math.PI*u),g.shape||0.45),line=lerp(RHB[a],RHB[b2],u);
       RHB[i]=lerp(line,g.floor!=null?g.floor:line-g.depth,w);}
+  }
+  LINEH.set(RHB);
+  if(T.ropeBridge)for(let i=0;i<NS;i++){const sv=rs(i);if(sv>=T.ropeBridge[0]&&sv<=T.ropeBridge[1])VOID[i]=1;}
+  if(T.leaves){ // the road stops at a ravine: gap, leaf, gap, leaf ... gap, road. Each leaf is flat and a step lower than the one before
+    const q=T.leaves,L=q.n*q.len+(q.n+1)*q.gap,ia=Math.round((S0+q.s)/DSA),ib=Math.round((S0+q.s+L)/DSA),hA=RHB[ia],hB=RHB[ib];T.leafList=[];
+    for(let i=ia;i<=ib;i++)LINEH[i]=lerp(hA,hB,(i-ia)/(ib-ia));
+    let sv=q.s;for(let k=0;k<=q.n;k++){
+      const g0=Math.round((S0+sv)/DSA),g1=k===q.n?ib:Math.round((S0+sv+q.gap)/DSA);GAPS.push([g0,g1]);
+      for(let i=g0+1;i<g1;i++){const u=(i-g0)/(g1-g0);RHB[i]=LINEH[i]-q.depth*Math.pow(Math.sin(Math.PI*u),0.35);}
+      sv+=q.gap;if(k===q.n)break;
+      const l0=g1,l1=Math.round((S0+sv+q.len)/DSA),hL=lerp(hA,hB,(k+1)/(q.n+1));
+      for(let i=l0;i<=l1;i++){RHB[i]=hL;LEAFZ[i]=1;}
+      T.leafList.push({i0:l0,i1:l1,h:hL});sv+=q.len;}
   }
   RH.set(RHB);
   if(T.env==='island')T.volc={x:PX[I0]-TX[I0]*234,z:PZ[I0]-TZ[I0]*234,rim:RHB[0]+6};   // the crater sits just behind the top of the run-up
@@ -825,6 +876,7 @@ function loadTrack(T){
     for(let k=0;k<=n;k++)RH[i0+k]=RHB[i0+k]+h*Math.pow(k/n,1.4);JUMPS.push([i0,i1,kind]);};
   if(T.jumpList)for(const j of T.jumpList)addJump(j.s,j.h,j.len,j.kind);
   if(T.gaps)for(const g of T.gaps)addJump(g.lip,g.kick,g.klen,'big');
+  if(T.leafList){addJump(T.leaves.s,1.1,14,'big');for(const l of T.leafList)addJump(S[l.i1]-S0,0.45,6,'leaf');}   // a timber kicker off the road end, and each leaf tip curls up a little
   const avoid=i=>(T.drop&&rs(i)<T.drop.end+80)||(T.bumpRange&&S[i]>T.bumpRange[0]-80&&S[i]<T.bumpRange[1]+80)||TUNNELS.some(t=>i>t.i0-60&&i<t.i1+60);
   for(const f of (T.jumps||[])){
     const c=Math.round((S0+f*L0)/DSA);let best=-1,bv=1e9;
@@ -875,7 +927,7 @@ function terrainInfo(x,z){
   }
   if(ROCKY[i]&&dist<FL+BLEND)h-=0.75*(1-smoothstep(FL,FL+BLEND,dist));   // Aloma's rock field: keep the verge below the dips between the humps
   if(TRACK.env==='island'&&inner>0)h=interp(RHB,i,along)-Math.abs(interp(SPLH,i,along))-0.55;   // between Aloma's twin roads: below the lower one (each road has a rock skirt)
-  if(TRACK.env==='city'||TRACK.env==='tokyo'){
+  if(TRACK.env==='city'||TRACK.env==='tokyo'||TRACK.env==='jungle'){
     const el=interp(ELEV,i,along);if(el>3)h=lerp(h,nat,smoothstep(3,8,el));          // bridges: leave the ground below the deck
   }
   TI.h=h;return TI;
@@ -916,6 +968,56 @@ function texBasalt(){if(_texBas)return _texBas;_texBas=canvasTex(256,512,(x,w,h)
     x.fillStyle='rgba(255,255,255,.1)';x.fillRect(cx-rad*0.4,cy-rad*0.45,rad*0.6,2);}                       // stones with a light top edge
   for(let k=0;k<5000;k++){x.fillStyle=r()<0.5?'rgba(255,240,230,.07)':'rgba(120,40,20,.18)';x.fillRect(r()*w,r()*h,1+r()*2,1+r()*2);}
 },true,true);return _texBas;}
+let _texLB=null,_texCrk=null,_texFlow=null,_texJR=null,_texPl=null,_texWW=null;
+// Mesozon: rain-soaked tarmac (dark, glossy puddles, mud washed onto the edges), plank decking, log-plank barrier walls
+function texJungleRoad(){if(_texJR)return _texJR;_texJR=canvasTex(256,1024,(x,w,h)=>{
+  x.fillStyle='#3a3c3f';x.fillRect(0,0,w,h);const r=rng(91);
+  for(let k=0;k<20000;k++){const v=r();x.fillStyle=v<0.3?'rgba(255,255,255,.06)':v<0.6?'rgba(0,0,0,.18)':'rgba(70,90,70,.10)';x.fillRect(r()*w,r()*h,1+r()*1.5,1+r()*1.5);}
+  for(let k=0;k<16;k++){const cx=w*(0.15+r()*0.7),cy=r()*h,rw=12+r()*40,rh=20+r()*70;const g=x.createRadialGradient(cx,cy,2,cx,cy,Math.max(rw,rh));
+    g.addColorStop(0,'rgba(170,190,195,.35)');g.addColorStop(0.6,'rgba(120,140,150,.18)');g.addColorStop(1,'rgba(120,140,150,0)');x.fillStyle=g;x.beginPath();x.ellipse(cx,cy,rw,rh,0,0,6.3);x.fill();}   // puddles catching the sky
+  for(const cx of [0.3,0.7]){const g=x.createLinearGradient(w*(cx-0.08),0,w*(cx+0.08),0);g.addColorStop(0,'rgba(10,12,14,0)');g.addColorStop(0.5,'rgba(10,12,14,.28)');g.addColorStop(1,'rgba(10,12,14,0)');x.fillStyle=g;x.fillRect(w*(cx-0.08),0,w*0.16,h);}   // dark wet wheel lines
+  const eg=(x0,x1)=>{const g=x.createLinearGradient(x0,0,x1,0);g.addColorStop(0,'rgba(92,70,42,.85)');g.addColorStop(1,'rgba(92,70,42,0)');x.fillStyle=g;x.fillRect(Math.min(x0,x1),0,Math.abs(x1-x0),h);};
+  eg(0,30);eg(w,w-30);   // mud washed onto the edges
+  for(let k=0;k<300;k++){x.fillStyle='rgba(60,90,40,.6)';const sx=r()<0.5?r()*16:w-r()*16;x.fillRect(sx,r()*h,2+r()*3,2+r()*3);}   // moss and leaves at the edges
+  x.fillStyle='rgba(230,225,200,.75)';for(let y=0;y<h;y+=128)x.fillRect(w/2-3,y+20,6,64);   // worn centre dashes
+},false,true);return _texJR;}
+function texPlanks(){if(_texPl)return _texPl;_texPl=canvasTex(256,512,(x,w,h)=>{   // planks laid across the deck, gaps between them, nail heads, wet dark grain
+  x.fillStyle='#1c1410';x.fillRect(0,0,w,h);const r=rng(57),n=16,ph=h/n;
+  for(let k=0;k<n;k++){const y0=k*ph+2,c=['#6b4a2e','#5e4128','#74522f','#553a24','#6a4a30'][Math.floor(r()*5)];x.fillStyle=c;x.fillRect(0,y0,w,ph-4);
+    for(let j=0;j<10;j++){x.fillStyle='rgba(30,18,10,'+(0.15+r()*0.2)+')';x.fillRect(0,y0+r()*(ph-6),w,1);}           // grain
+    x.fillStyle='rgba(255,230,190,.08)';x.fillRect(0,y0,w,2);
+    x.fillStyle='#2a2a2a';for(const nx2 of [0.08,0.5,0.92]){x.beginPath();x.arc(w*nx2,y0+ph/2-2,2.2,0,6.3);x.fill();}
+    if(r()<0.3){x.fillStyle='rgba(20,12,8,.5)';x.fillRect(r()*w,y0,4+r()*20,ph-4);}}                                  // a dark worn patch
+},true,true);return _texPl;}
+function texWoodWall(){if(_texWW)return _texWW;_texWW=canvasTex(256,128,(x,w,h)=>{   // three stacked rough-sawn planks with posts, a little moss
+  x.fillStyle='#2a1c12';x.fillRect(0,0,w,h);const r=rng(66),rows=3,rh=h/rows;
+  for(let y=0;y<rows;y++){const y0=y*rh+2;x.fillStyle=['#7a5634','#6b4a2c','#83603a'][y];x.fillRect(0,y0,w,rh-4);
+    for(let j=0;j<14;j++){x.fillStyle='rgba(40,24,12,'+(0.15+r()*0.25)+')';x.fillRect(0,y0+r()*(rh-6),w,1+r());}
+    x.fillStyle='rgba(255,235,200,.12)';x.fillRect(0,y0,w,3);x.fillStyle='rgba(0,0,0,.3)';x.fillRect(0,y0+rh-7,w,3);}
+  for(const px of [0,w/2]){x.fillStyle='#4a3220';x.fillRect(px,0,14,h);x.fillStyle='rgba(255,235,200,.1)';x.fillRect(px,0,3,h);}   // posts
+  for(let k=0;k<40;k++){x.fillStyle='rgba(70,110,40,'+(0.3+r()*0.4)+')';x.fillRect(r()*w,h-6-r()*14,3+r()*8,2+r()*4);}   // moss along the bottom
+},true,true);return _texWW;}
+function texLavaBrick(){if(_texLB)return _texLB;_texLB=canvasTex(256,128,(x,w,h)=>{   // 3 bricks along (2.4 m), 4 courses up: porous dark basalt, rusty mortar
+  x.fillStyle='#5a3426';x.fillRect(0,0,w,h);const r=rng(88),rows=4,bw=w/3,rh=h/rows;
+  for(let y=0;y<rows;y++)for(let k=-1;k<4;k++){const x0=k*bw+(y%2?bw/2:0)+3,y0=y*rh+3,ww=bw-6,hh=rh-6;
+    x.fillStyle=['#2f2b2c','#3a3435','#433b3a','#292627','#4a3a35'][Math.floor(r()*5)];x.fillRect(x0,y0,ww,hh);
+    x.fillStyle='rgba(255,255,255,.08)';x.fillRect(x0,y0,ww,3);x.fillStyle='rgba(0,0,0,.3)';x.fillRect(x0,y0+hh-3,ww,3);
+    for(let q=0;q<26;q++){x.fillStyle='rgba(0,0,0,'+(0.25+r()*0.3)+')';x.beginPath();x.arc(x0+r()*ww,y0+r()*hh,0.8+r()*1.8,0,6.3);x.fill();}}   // pores
+  for(let k=0;k<3;k++){x.fillStyle='rgba(255,120,40,.35)';x.fillRect(r()*w,Math.floor(r()*rows)*rh,20+r()*30,3);}   // a hint of glow in the joints
+},true,true);return _texLB;}
+function texCrack(){if(_texCrk)return _texCrk;_texCrk=canvasTex(64,1024,(x,w,h)=>{   // one long wandering crack with side branches (transparent around it)
+  const r=rng(23);x.lineCap='round';x.lineJoin='round';let px=w/2,py=0;const pts=[[px,py]];
+  while(py<h){py+=10+r()*16;px=clamp(px+(r()-0.5)*14,10,w-10);pts.push([px,py]);}
+  for(const [lw,c] of [[7,'rgba(10,8,10,.35)'],[3.2,'rgba(12,10,12,.92)']]){x.strokeStyle=c;x.lineWidth=lw;x.beginPath();pts.forEach((p,k)=>k?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]));x.stroke();}
+  x.strokeStyle='rgba(12,10,12,.8)';x.lineWidth=1.4;
+  for(let k=2;k<pts.length-2;k+=3)if(r()<0.6){const [bx,by]=pts[k];let qx=bx,qy=by,a=(r()<0.5?-1:1)*(0.5+r()*0.7);x.beginPath();x.moveTo(qx,qy);for(let j=0;j<3;j++){qx+=Math.sin(a)*8;qy+=Math.cos(a)*9;a+=(r()-0.5)*0.6;x.lineTo(clamp(qx,2,w-2),qy);}x.stroke();}
+});return _texCrk;}
+function texLavaFlow(){if(_texFlow)return _texFlow;_texFlow=canvasTex(128,512,(x,w,h)=>{   // molten rock: bright streaks along the flow, dark crust plates drifting on it
+  const g=x.createLinearGradient(0,0,w,0);g.addColorStop(0,'#c8340e');g.addColorStop(0.25,'#ff8a1e');g.addColorStop(0.5,'#ffc93a');g.addColorStop(0.75,'#ff8a1e');g.addColorStop(1,'#c8340e');x.fillStyle=g;x.fillRect(0,0,w,h);
+  const r=rng(31);for(let k=0;k<70;k++){x.fillStyle=r()<0.5?'rgba(255,240,150,.55)':'rgba(190,40,10,.45)';const sx=r()*w;x.fillRect(sx,r()*h,1.5+r()*3,30+r()*120);}   // streaks
+  for(let k=0;k<15;k++){const cx=r()*w,cy=r()*h,rw=5+r()*10,rh=18+r()*40;x.fillStyle='rgba(50,18,10,'+(0.55+r()*0.35)+')';x.beginPath();x.ellipse(cx,cy,rw,rh,r()*0.6-0.3,0,6.3);x.fill();
+    x.strokeStyle='rgba(255,200,80,.6)';x.lineWidth=1.5;x.stroke();}   // crust plates with glowing rims
+},true,true);return _texFlow;}
 // worn desert tarmac (Nomahe): gritty sun-bleached asphalt, cracks and patches, dusty edges, no paint or kerbs
 const texCanyonRoad=canvasTex(256,1024,(x,w,h)=>{
   x.fillStyle='#5d5a57';x.fillRect(0,0,w,h);
@@ -1144,9 +1246,9 @@ function instancedPair(geo,mat,n,ol){
   return m;
 }
 const CANYON_BANDS=['#c8683e','#d98a57','#b4532f','#e0a877','#a64a2b','#d3794a','#e6b98c','#bd5d36'].map(c=>new THREE.Color(c));
-let DUSK_BG=null,TROP_BG=null;
+let DUSK_BG=null,TROP_BG=null,RAIN_BG=null;
 function buildWorld(){
-  clearWorld();WG=new THREE.Group();scene.add(WG);const city=TRACK.env==='city',canyon=TRACK.env==='canyon',tokyo=TRACK.env==='tokyo',snow=TRACK.env==='snow',isl=TRACK.env==='island';applyEnv(city);setEnvMaps(city?ENVN:ENV);
+  clearWorld();WG=new THREE.Group();scene.add(WG);const city=TRACK.env==='city',canyon=TRACK.env==='canyon',tokyo=TRACK.env==='tokyo',snow=TRACK.env==='snow',isl=TRACK.env==='island',jun=TRACK.env==='jungle';applyEnv(city);setEnvMaps(city?ENVN:ENV);
   if(snow){ // crisp alpine day: cold bright sun, blue-white haze
     ambL.color.set(0xeef4ff);ambL.intensity=0.38;hemiL.color.set(0xdfeeff);hemiL.groundColor.set(0xc8d6e8);hemiL.intensity=0.3;
     sunLight.color.set(0xfff6ea);sunLight.intensity=0.6;scene.fog.color.set(0xdbe8f4);scene.fog.near=420;scene.fog.far=2100;fogU.fogColor.value.copy(scene.fog.color);fogU.fogNear.value=420;fogU.fogFar.value=2100;}
@@ -1155,6 +1257,10 @@ function buildWorld(){
     scene.background=DUSK_BG;ambL.color.set(0xffd6ee);ambL.intensity=0.36;hemiL.color.set(0xb9a6ff);hemiL.groundColor.set(0xff9a7a);hemiL.intensity=0.3;
     sunLight.color.set(0xffb27a);sunLight.intensity=0.66;SUN_DIR.set(-0.62,0.3,0.72).normalize();
     scene.fog.color.set(0xc79ac4);scene.fog.near=380;scene.fog.far=1900;fogU.fogColor.value.copy(scene.fog.color);fogU.fogNear.value=380;fogU.fogFar.value=1900;}
+  if(jun){ // rainforest in the rain: dark overcast, soft light, grey-green mist close in
+    if(!RAIN_BG)RAIN_BG=canvasTex(4,256,(x,w,h)=>{const g=x.createLinearGradient(0,0,0,h);g.addColorStop(0,'#46514f');g.addColorStop(0.3,'#66736f');g.addColorStop(0.46,'#8d9a93');g.addColorStop(1,'#8d9a93');x.fillStyle=g;x.fillRect(0,0,w,h);});
+    scene.background=RAIN_BG;ambL.color.set(0xdfe9e2);ambL.intensity=0.46;hemiL.color.set(0xc6d6cf);hemiL.groundColor.set(0x3f5a32);hemiL.intensity=0.32;
+    sunLight.color.set(0xe6efe8);sunLight.intensity=0.36;scene.fog.color.set(0x8d9a93);scene.fog.near=140;scene.fog.far=1150;fogU.fogColor.value.copy(scene.fog.color);fogU.fogNear.value=140;fogU.fogFar.value=1150;}
   if(isl){ // tropical noon: strong warm sun, deep blue sky, sea haze
     if(!TROP_BG)TROP_BG=canvasTex(4,256,(x,w,h)=>{const g=x.createLinearGradient(0,0,0,h);g.addColorStop(0,'#2a78d6');g.addColorStop(0.22,'#55a9e8');g.addColorStop(0.38,'#a9daf2');g.addColorStop(0.48,'#cfeaf2');g.addColorStop(1,'#cfeaf2');x.fillStyle=g;x.fillRect(0,0,w,h);});
     scene.background=TROP_BG;ambL.color.set(0xfff6e8);ambL.intensity=0.36;hemiL.color.set(0xd6f0ff);hemiL.groundColor.set(0x6f8a4a);hemiL.intensity=0.26;
@@ -1164,7 +1270,7 @@ function buildWorld(){
   for(let i=0;i<NS;i++){minX=Math.min(minX,PX[i]);maxX=Math.max(maxX,PX[i]);minZ=Math.min(minZ,PZ[i]);maxZ=Math.max(maxZ,PZ[i]);}
   if(TRACK.env==='canyon'){minX-=700;maxX+=700;minZ-=600;maxZ+=700;}else if(isl){const b=TRACK.islB;minX=b.minX;maxX=b.maxX;minZ=b.minZ;maxZ=b.maxZ;}else{minX-=380;maxX+=380;minZ-=340;maxZ+=260;}
   // ---- terrain
-  const step=isl?12:city||canyon||tokyo||snow?10:9,nx=Math.ceil((maxX-minX)/step)+1,nz=Math.ceil((maxZ-minZ)/step)+1;
+  const step=isl?12:city||canyon||tokyo||snow||jun?10:9,nx=Math.ceil((maxX-minX)/step)+1,nz=Math.ceil((maxZ-minZ)/step)+1;
   const pos=new Float32Array(nx*nz*3),col=new Float32Array(nx*nz*3),hs=new Float32Array(nx*nz),ds=new Float32Array(nx*nz),tun=new Uint8Array(nx*nz);
   for(let j=0;j<nz;j++)for(let i=0;i<nx;i++){const x=minX+i*step,z=minZ+j*step;const t=terrainInfo(x,z);const k=j*nx+i;hs[k]=t.h;ds[k]=t.dist;tun[k]=t.tun?1:0;pos[k*3]=x;pos[k*3+1]=t.h;pos[k*3+2]=z;}
   const C=hex=>new THREE.Color(hex);
@@ -1176,6 +1282,14 @@ function buildWorld(){
     const hx=hs[j*nx+Math.min(nx-1,i+1)]-hs[j*nx+Math.max(0,i-1)],hz=hs[Math.min(nz-1,j+1)*nx+i]-hs[Math.max(0,j-1)*nx+i];
     const slope=Math.hypot(hx,hz)/(2*step);
     const n1=0.5+0.5*Math.sin(x*0.021+Math.cos(z*0.017)*2.2)*Math.cos(z*0.013-x*0.004);
+    if(jun){ // rainforest floor: deep greens and leaf litter, wet mud along the road, mossy rock on the steep sides, dark river silt in the valleys
+      const n2=0.5+0.5*Math.sin(x*0.043+1.7)*Math.cos(z*0.037);
+      if(h<2.4)tmp.set('#4d5a3a');
+      else if(ds[k]<FLAT-0.5&&!tun[k])tmp.set('#5b4a34').lerp(C('#3f3a2a'),n1*0.5);
+      else if(slope>0.85)tmp.set('#4f5a48').lerp(C('#3c4a36'),n1*0.6);
+      else{tmp.set('#2f6a2a').lerp(C('#3f8a32'),n1*0.6).lerp(C('#5a6a2a'),n2*0.25);if(slope>0.45)tmp.lerp(C('#4a5a3c'),(slope-0.45)/0.4*0.6);}
+      col[k*3]=tmp.r;col[k*3+1]=tmp.g;col[k*3+2]=tmp.b;continue;
+    }
     if(isl){ // beaches (black sand round the lava), jungle low down, scrub higher up, ash and black lava flows on the volcano
       const rib=TRACK.lavaRib(x,z),r=Math.hypot(x-TRACK.volc.x,z-TRACK.volc.z);
       if(h<1.6)tmp.set(n1>0.62?'#3b3638':'#e9d49a');
@@ -1245,8 +1359,8 @@ function buildWorld(){
   const terrain=new THREE.Mesh(tg,toon(0xffffff,{vertexColors:true}));terrain.receiveShadow=true;WG.add(terrain);
 
   // ---- sea
-  const sea=new THREE.Mesh(new THREE.PlaneGeometry(isl?60000:14000,isl?60000:14000),std({color:city?0x1d4a72:canyon?0x2c6f6a:tokyo?0x5a4f9a:snow?0xbfd8ea:isl?0x1aa6c4:0x2f7fb8,metalness:0.1,roughness:0.12,envMapIntensity:canyon?0.45:0.9}));sea.rotation.x=-Math.PI/2;sea.position.set(0,0,1400);WG.add(sea);
-  const foam=new THREE.Mesh(new THREE.PlaneGeometry(isl?60000:14000,isl?60000:14000),new THREE.MeshBasicMaterial({color:city?0x2a4a6a:canyon?0x4f9a8c:tokyo?0xff9ec7:snow?0xf2f8ff:isl?0x9ff0f0:0x8fd0ee,transparent:true,opacity:0.3,depthWrite:false}));foam.rotation.x=-Math.PI/2;foam.position.set(0,0.35,1400);WG.add(foam);world.foam=foam;
+  const sea=new THREE.Mesh(new THREE.PlaneGeometry(isl?60000:14000,isl?60000:14000),std({color:city?0x1d4a72:canyon?0x2c6f6a:tokyo?0x5a4f9a:snow?0xbfd8ea:isl?0x1aa6c4:jun?0x3f5a4a:0x2f7fb8,metalness:0.1,roughness:0.12,envMapIntensity:canyon?0.45:0.9}));sea.rotation.x=-Math.PI/2;sea.position.set(0,0,1400);WG.add(sea);
+  const foam=new THREE.Mesh(new THREE.PlaneGeometry(isl?60000:14000,isl?60000:14000),new THREE.MeshBasicMaterial({color:city?0x2a4a6a:canyon?0x4f9a8c:tokyo?0xff9ec7:snow?0xf2f8ff:isl?0x9ff0f0:jun?0x7a8f80:0x8fd0ee,transparent:true,opacity:0.3,depthWrite:false}));foam.rotation.x=-Math.PI/2;foam.position.set(0,0.35,1400);WG.add(foam);world.foam=foam;
 
   // ---- road
   function ribbon(i0,i1,off0,off1,yOff,arr,vScale,mat){
@@ -1263,10 +1377,10 @@ function buildWorld(){
   const iWood=RAMP_END>0?Math.round((S0+RAMP_END)/DSA):0;   // Pebble Hill: the whole run-up and start ramp are wooden decking
   if(iWood>0)ribbon(0,iWood,HALFW,-HALFW,0.03,RHB,8,toon(0xffffff,{map:texWood}));
   if(city){const sw=toon(0xa4a8b2,{map:texWalk});ribbon(0,NS-1,RAIL+0.2,HALFW,0.08,RHB,4,sw);ribbon(0,NS-1,-HALFW,-RAIL-0.2,0.08,RHB,4,sw);}
-  if(!canyon&&!tokyo&&!snow&&!isl)ribbon(iWood,NS-1,HALFW,-HALFW,0.03,RHB,8,toon(0xffffff,{map:texRoad}));
+  if(!canyon&&!tokyo&&!snow&&!isl&&!jun)ribbon(iWood,NS-1,HALFW,-HALFW,0.03,RHB,8,toon(0xffffff,{map:texRoad}));
   else{ // Nomahe: tarmac / dirt pieces, none over the gaps, two branches round the rock
-    const mR=toon(0xffffff,{map:tokyo?texTokyoRoad:snow?texSnowRoad:isl?texIslandRoad():texCanyonRoad}),mD=toon(0xffffff,{map:texDirt}),mS=toon(0xffffff,{map:texPackedSnow}),mI=toon(0xe6f6ff,{map:texIce}),mK=isl?toon(0xffffff,{map:texBasalt()}):mR;
-    const key=i=>inGap(i)?-1:ROCKY[i]?4:SURF[i];
+    const mR=toon(0xffffff,{map:tokyo?texTokyoRoad:snow?texSnowRoad:isl?texIslandRoad():jun?texJungleRoad():texCanyonRoad}),mD=toon(0xffffff,{map:texDirt}),mS=toon(0xffffff,{map:texPackedSnow}),mI=toon(0xe6f6ff,{map:texIce}),mK=isl?toon(0xffffff,{map:texBasalt()}):mR,mP=jun?toon(0xffffff,{map:texPlanks()}):mR;
+    const key=i=>inGap(i)||LEAFZ[i]?-1:ROCKY[i]?4:jun&&(VOID[i]||S[i]-S0<14)?5:SURF[i];   // Mesozon: no road on the leaves; planks on the rope bridge and on the tree-top start deck
     const piece=(a,b,mat)=>{ // one surface run, split into single-road and two-branch parts
       let c0=a;while(c0<b){let c1=c0;const two=SPL[c0]>0;while(c1<b&&(SPL[c1+1]>0)===two)c1++;const e=Math.min(b,c1+1);
         const vs=tokyo?48:snow&&mat===mR?32:mat===mR?16:8,HW=tokyo?RAIL+0.05:HALFW;   // Tokiyama's playfield runs right up to the rails
@@ -1274,17 +1388,29 @@ function buildWorld(){
         else{const s0=Math.max(a,c0-1);ribbon(s0,e,i=>SPL[i]+HALFW,i=>SPL[i]-HALFW,0.03,RHB,vs,mat);ribbon(s0,e,i=>-SPL[i]+HALFW,i=>-SPL[i]-HALFW,0.036,RHB,vs,mat);}
         c0=c1+1;}};
     let a=0;while(a<NS-1){let b=a;const k=key(a);while(b<NS-1&&key(b+1)===k)b++;
-      if(k>=0){const e=b<NS-1&&key(b+1)===-1?b:Math.min(NS-1,b+1);piece(a,e,[mR,mD,mS,mI,mK][k]);}
+      if(k>=0){const e=b<NS-1&&key(b+1)===-1?b:Math.min(NS-1,b+1);piece(a,e,[mR,mD,mS,mI,mK,mP][k]);}
       a=b+1;}
     // Armco along the outer edges and along both sides of the rock, broken over the gaps
     const railM=tokyo?toon(0x4a3a7a,{side:THREE.DoubleSide}):toon(0xffffff,{map:texRail,side:THREE.DoubleSide});
-    const railRun=(ok,off)=>{let a2=0;while(a2<NS){while(a2<NS&&!ok(a2))a2++;let b=a2;while(b<NS-1&&ok(b+1))b++;if(b>a2+1){
+    const brickM=isl?toon(0xffffff,{map:texLavaBrick(),side:THREE.DoubleSide}):jun?toon(0xffffff,{map:texWoodWall(),side:THREE.DoubleSide}):null;
+    const railRun=(ok,off,out)=>{let a2=0;while(a2<NS){while(a2<NS&&!ok(a2))a2++;let b=a2;while(b<NS-1&&ok(b+1))b++;if(b>a2+1&&brickM){
+        // Aloma: a low wall of volcanic bricks, its road face on the barrier line, 0.55 m thick, built outwards
+        const P=[],U=[],I=[],n=b-a2+1,TH=0.55,TOP=0.95;
+        for(const f of [0,1,2])for(let i=a2;i<=b;i++){const o=off(i),sgo=out(i),y=RHB[i]+bankAt(i,o),bot=y-(ROCKY[i]?1.15:0.5),o2=o+sgo*TH;
+          const pt=(oo,yy)=>P.push(PX[i]+NX[i]*oo,yy,PZ[i]+NZ[i]*oo),u=S[i]/2.4;
+          if(f===0){pt(o,bot);pt(o,y+TOP);U.push(u,0,u,(y+TOP-bot)/1.05);}            // face towards the road
+          else if(f===1){pt(o,y+TOP);pt(o2,y+TOP);U.push(u,0.02,u,0.16);}              // top
+          else{pt(o2,y+TOP);pt(o2,bot);U.push(u,(y+TOP-bot)/1.05,u,0);}}               // back
+        for(let f=0;f<3;f++)for(let k=0;k<n-1;k++){const q=f*n*2+k*2;I.push(q,q+2,q+1,q+1,q+2,q+3);}
+        const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.setIndex(I);g.computeVertexNormals();
+        const m=new THREE.Mesh(g,brickM);m.receiveShadow=true;WG.add(m);
+      }else if(b>a2+1){
         const P=[],U=[],I=[];for(let i=a2;i<=b;i++){const o=off(i),x=PX[i]+NX[i]*o,z=PZ[i]+NZ[i]*o,y=RHB[i]+bankAt(i,o);P.push(x,y-(ROCKY[i]?1.15:0.35),z,x,y+0.8,z);U.push(S[i]/2,0,S[i]/2,1);if(i<b){const q=(i-a2)*2;I.push(q,q+2,q+1,q+1,q+2,q+3);}}
         const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.setIndex(I);g.computeVertexNormals();WG.add(new THREE.Mesh(g,railM));}
       a2=b+1;}};
     const cannonHole=(i,sg)=>OBS&&(OBS.cannons.some(o=>Math.abs(i-o.i)*DSA<3.2)||(sg<0&&OBS.rocks.some(o=>Math.abs(i-o.i)*DSA<4.2)));   // the balls (and Aloma's lava boulders, on their way out) roll through gaps in the rails
-    const noGap=i=>!GAPS.some(g=>i>g[0]-1&&i<g[1]);
-    for(const sg of [1,-1]){railRun(i=>noGap(i)&&!cannonHole(i,sg),i=>sg*(SPL[i]+RAIL+RAILX[i]));railRun(i=>SPL[i]>RAIL&&noGap(i),i=>sg*(SPL[i]-RAIL));}
+    const noGap=i=>!GAPS.some(g=>i>g[0]-1&&i<g[1])&&!VOID[i]&&!LEAFZ[i];   // no barriers over gaps, along the rope bridge or on the leaves
+    for(const sg of [1,-1]){railRun(i=>noGap(i)&&!cannonHole(i,sg),i=>sg*(SPL[i]+RAIL+RAILX[i]),()=>sg);railRun(i=>SPL[i]>RAIL&&noGap(i),i=>sg*(SPL[i]-RAIL),()=>-sg);}
     if(tokyo){ // pinball neon: a glowing strip along the top of each rail, pink on the left, cyan on the right
       for(const sg of [1,-1]){const m=new THREE.MeshBasicMaterial({color:sg>0?0xff3fb0:0x3fe8ff});
         let a2=0;const ok=i=>noGap(i)&&!cannonHole(i,sg);while(a2<NS){while(a2<NS&&!ok(a2))a2++;let b=a2;while(b<NS-1&&ok(b+1))b++;if(b>a2+1){
@@ -1301,7 +1427,7 @@ function buildWorld(){
     WG.add(new THREE.Mesh(g,toon(0xffffff,{map:city?texBarrier:texRail,side:THREE.DoubleSide})));
   }
   if(city){rail(1);rail(-1);}
-  else if(!canyon&&!tokyo&&!snow&&!isl){ // Pebble Hill: the barriers are walls of square hay bales, two high with staggered joints
+  else if(!canyon&&!tokyo&&!snow&&!isl&&!jun){ // Pebble Hill: the barriers are walls of square hay bales, two high with staggered joints
     const BL=2.4,BD=1.2,BH=0.9,off=BARRIER+0.03+BD/2,list=[];
     // lowest point of the terrain mesh around a spot (its triangles span 9 m, so check the surrounding grid corners)
     const meshLow=(x,z)=>{const gi=Math.floor((x-minX)/step),gj=Math.floor((z-minZ)/step);let m=1e9;
@@ -1331,7 +1457,8 @@ function buildWorld(){
     const ie=kind==='big'?i1:i1+1;   // a gap kicker ends at its lip
     if(kind==='dirt')ribbon(i0,ie,HALFW,-HALFW,0.05,RH,8,dirtKick);
     else if(kind==='snow'){ribbon(i0,ie,HALFW,-HALFW,0.05,RH,6,snowKick);ribbon(i1-1,i1,HALFW,-HALFW,0.075,RH,2,toon(0xffffff,{map:texHazard}));}   // packed-snow kicker
-    else if(canyon&&!tokyo){ribbon(i0,ie,HALFW,-HALFW,0.05,RH,8,toon(0xffffff,{map:texWood}));ribbon(i1-1,i1,HALFW,-HALFW,0.075,RH,2,toon(0xffffff,{map:texHazard}));}   // timber kicker
+    else if(kind==='leaf')continue;   // a leaf tip: drawn with the leaf
+    else if((canyon||jun)&&!tokyo){ribbon(i0,ie,HALFW,-HALFW,0.05,RH,8,toon(0xffffff,{map:texWood}));ribbon(i1-1,i1,HALFW,-HALFW,0.075,RH,2,toon(0xffffff,{map:texHazard}));}   // timber kicker
     else if(city){ // steel kicker: diamond tread plate, hazard-striped lip, steel side plates
       ribbon(i0,ie,HALFW,-HALFW,0.05,RH,3,plateMat);
       ribbon(i1-1,i1,HALFW,-HALFW,0.075,RH,2,toon(0xffffff,{map:texHazard}));
@@ -1339,11 +1466,11 @@ function buildWorld(){
     for(const sg of [1,-1]){
       const P=[],I=[];for(let i=i0;i<=ie;i++){const x=PX[i]+NX[i]*HALFW*sg,z=PZ[i]+NZ[i]*HALFW*sg;P.push(x,RHB[i]-0.1,z,x,RH[i]+0.05,z);if(i<ie){const a=(i-i0)*2;I.push(a,a+2,a+1,a+1,a+2,a+3);}}
       const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setIndex(I);g.computeVertexNormals();
-      WG.add(new THREE.Mesh(g,kind==='dirt'?dirtSide:kind==='snow'?snowSide:canyon&&!tokyo?woodSide:sideMat));
+      WG.add(new THREE.Mesh(g,kind==='dirt'?dirtSide:kind==='snow'?snowSide:(canyon||jun)&&!tokyo?woodSide:sideMat));
     }
     if(kind==='big'){ // steel front face of the kicker, down into the gap
       const P=[];for(const [d,y] of [[HALFW,RH[i1]+0.05],[-HALFW,RH[i1]+0.05],[-HALFW,RHB[i1]-9],[HALFW,RHB[i1]-9]])P.push(PX[i1]+NX[i1]*d,y,PZ[i1]+NZ[i1]*d);
-      const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setIndex([0,1,2,0,2,3]);g.computeVertexNormals();WG.add(new THREE.Mesh(g,canyon&&!tokyo?woodSide:sideMat));
+      const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setIndex([0,1,2,0,2,3]);g.computeVertexNormals();WG.add(new THREE.Mesh(g,(canyon||jun)&&!tokyo?woodSide:sideMat));
     }
   }
   // finish strip
@@ -1390,14 +1517,14 @@ function buildWorld(){
     let pi=0;
     for(const [list,left] of [[chevL,true],[chevR,false]]){
       const mm=instancedPair(boardG,new THREE.MeshBasicMaterial({map:arrowTex(left),side:THREE.DoubleSide}),list.length,0);
-      list.forEach((i,k)=>{const sg=left?-1:1;const d=sg*(city||canyon||tokyo||snow||isl?RAIL+0.7:RAIL+0.3);const x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d;Q.setFromEuler(E.set(0,Math.atan2(TX[i],TZ[i])+Math.PI,0));
+      list.forEach((i,k)=>{const sg=left?-1:1;const d=sg*(city||canyon||tokyo||snow||isl||jun?RAIL+0.7:RAIL+0.3);const x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d;Q.setFromEuler(E.set(0,Math.atan2(TX[i],TZ[i])+Math.PI,0));
         M.compose(V.set(x,RHB[i]+1.7,z),Q,One);mm.setMatrixAt(k,M);M.compose(V.set(x,RHB[i]+0.7,z),Q,One);posts.setMatrixAt(pi++,M);});
     }
     const bt={150:boardTex(150),100:boardTex(100),50:boardTex(50)},bg=new THREE.PlaneGeometry(1.0,1.25);
     for(const c of CORNERS){
       if(c.peak<1/85)continue;
       for(const dist of [150,100,50]){
-        const i=c.i-Math.round(dist/DSA);if(i<5||inGap(i))continue;const sg=-c.dir;const d=sg*(city||canyon||tokyo||snow||isl?RAIL+0.7:RAIL+0.3);
+        const i=c.i-Math.round(dist/DSA);if(i<5||inGap(i))continue;const sg=-c.dir;const d=sg*(city||canyon||tokyo||snow||isl||jun?RAIL+0.7:RAIL+0.3);
         const x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d;
         const b=new THREE.Mesh(bg,new THREE.MeshBasicMaterial({map:bt[dist],side:THREE.DoubleSide}));b.position.set(x,RHB[i]+1.9,z);b.rotation.y=Math.atan2(TX[i],TZ[i])+Math.PI;WG.add(b);
         Q.setFromEuler(E.set(0,b.rotation.y,0));M.compose(V.set(x,RHB[i]+0.7,z),Q,One);posts.setMatrixAt(pi++,M);
@@ -1408,8 +1535,8 @@ function buildWorld(){
   // ---- trees
   const trees=[];
   const okSpot=(x,z,minD)=>{const t=terrainInfo(x,z);return (t.dist>minD&&t.h>2.8)?t.h:null;};
-  for(let i=10;i<(canyon||tokyo||snow||isl?0:NS);i+=3){for(const sg of [1,-1]){if(R()<(city?0.06:0.4)){const d=sg*(FLAT+3+R()*24);const x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d;const h=okSpot(x,z,FLAT+2);if(h!==null)trees.push([x,h,z]);}}}
-  for(let k=0;k<6000&&trees.length<(canyon||tokyo||snow||isl?0:city?500:1600);k++){
+  for(let i=10;i<(canyon||tokyo||snow||isl||jun?0:NS);i+=3){for(const sg of [1,-1]){if(R()<(city?0.06:0.4)){const d=sg*(FLAT+3+R()*24);const x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d;const h=okSpot(x,z,FLAT+2);if(h!==null)trees.push([x,h,z]);}}}
+  for(let k=0;k<6000&&trees.length<(canyon||tokyo||snow||isl||jun?0:city?500:1600);k++){
     const x=minX+40+R()*(maxX-minX-80),z=minZ+40+R()*(maxZ-minZ-80);
     const f=0.5+0.5*Math.sin(x*0.018+1)*Math.cos(z*0.015);if(R()>f*1.25)continue;
     if(city&&hillAt(x,z)<5)continue;
@@ -1430,7 +1557,7 @@ function buildWorld(){
   }
   // ---- houses
   const houses=[];
-  if(!city&&!canyon&&!tokyo&&!snow&&!isl){
+  if(!city&&!canyon&&!tokyo&&!snow&&!isl&&!jun){
   const tryHouse=(x,z,minD)=>{const t=terrainInfo(x,z);if(t.dist<minD||t.h<1.8)return false;for(const h of houses){if((h[0]-x)**2+(h[2]-z)**2<160)return false;}houses.push([x,t.h,z,R()*Math.PI*2]);return true;};
   for(let k=0;k<300&&houses.length<12;k++){const a=R()*Math.PI*2,r=30+R()*60;tryHouse(PX[I0]+Math.sin(a)*r,PZ[I0]-20+Math.cos(a)*r*0.8,FLAT+5);}
   for(let k=0;k<700&&houses.length<40;k++){const i=clamp(NS-1-Math.floor(R()*220),0,NS-1);const d=(R()<0.5?-1:1)*(FLAT+6+R()*55);tryHouse(PX[i]+NX[i]*d+(R()-0.5)*10,PZ[i]+NZ[i]*d+(R()-0.5)*10,FLAT+5);}
@@ -1453,7 +1580,7 @@ function buildWorld(){
   }
   }
   // ---- landmarks
-  if(!city&&!canyon&&!tokyo&&!snow&&!isl){
+  if(!city&&!canyon&&!tokyo&&!snow&&!isl&&!jun){
     const wx=-260,wz=420;const t=terrainInfo(wx,wz);
     const g=new THREE.Group();g.position.set(wx,t.h,wz);g.rotation.y=0.6;WG.add(g);
     part(g,GEO.taper,0xefe8da,[0,6,0],[2.6,12,2.6],null,0.05);
@@ -1471,10 +1598,10 @@ function buildWorld(){
   // ---- crowd
   {
     const ppl=[];
-    for(let i=Math.round(FINISH_S/DSA)-45;i<Math.min(NS-2,Math.round(FINISH_S/DSA)+14);i++){for(const sg of [1,-1]){if(((city||tokyo)&&ELEV[i]>1.5)||inGap(i)||GAPS.some(g=>Math.abs(i-g[1])<3))continue;if(R()<0.8){const d=sg*(RAIL+1.3+R()*3.5);ppl.push([PX[i]+NX[i]*d,RHB[i]-0.12,PZ[i]+NZ[i]*d,R()*6.28]);}}}
+    for(let i=Math.round(FINISH_S/DSA)-45;i<Math.min(NS-2,Math.round(FINISH_S/DSA)+14);i++){for(const sg of [1,-1]){if(((city||tokyo||TRACK.env==="jungle")&&(ELEV[i]>1.5||VOID[i]))||inGap(i)||GAPS.some(g=>Math.abs(i-g[1])<3))continue;if(R()<0.8){const d=sg*(RAIL+1.3+R()*3.5);ppl.push([PX[i]+NX[i]*d,RHB[i]-0.12,PZ[i]+NZ[i]*d,R()*6.28]);}}}
     const nStand=TRACK.env==='tokyo'?(()=>{const a=standPeople();ppl.push(...a);return a.length;})():TRACK.env==='snow'?(()=>{const a=bridgePeople();ppl.push(...a);return a.length;})():0;
-    if(!city&&TRACK.env!=='tokyo')for(let i=Math.round((S0+24)/DSA);i<Math.round((S0+70)/DSA);i++){for(const sg of [1,-1]){if(R()<0.6){const d=sg*(RAIL+1.3+R()*2.5);ppl.push([PX[i]+NX[i]*d,RHB[i]-0.12,PZ[i]+NZ[i]*d,R()*6.28]);}}}
-    for(const c of CORNERS){if(c.peak<1/70)continue;for(let i=c.i;i<c.i+30;i++){const sg=-c.dir;if((city||tokyo)&&(ELEV[i]>1.5||inTunnel(i)||inGap(i)))continue;if(snow&&inTunnel(i))continue;if(canyon&&(inTunnel(i)||SPL[i]>0||inGap(i)))continue;if(R()<0.55){const d=sg*(RAIL+1.5+R()*3);ppl.push([PX[i]+NX[i]*d,RHB[i]-0.12,PZ[i]+NZ[i]*d,R()*6.28]);}}}
+    if(!city&&TRACK.env!=='tokyo'&&TRACK.env!=='jungle')for(let i=Math.round((S0+24)/DSA);i<Math.round((S0+70)/DSA);i++){for(const sg of [1,-1]){if(R()<0.6){const d=sg*(RAIL+1.3+R()*2.5);ppl.push([PX[i]+NX[i]*d,RHB[i]-0.12,PZ[i]+NZ[i]*d,R()*6.28]);}}}
+    for(const c of CORNERS){if(c.peak<1/70)continue;for(let i=c.i;i<c.i+30;i++){const sg=-c.dir;if((city||tokyo||TRACK.env==="jungle")&&(ELEV[i]>1.5||VOID[i]||inTunnel(i)||inGap(i)))continue;if(snow&&inTunnel(i))continue;if(canyon&&(inTunnel(i)||SPL[i]>0||inGap(i)))continue;if(R()<0.55){const d=sg*(RAIL+1.5+R()*3);ppl.push([PX[i]+NX[i]*d,RHB[i]-0.12,PZ[i]+NZ[i]*d,R()*6.28]);}}}
     const n=ppl.length,col=new THREE.Color();
     const bm=instancedPair(new THREE.CylinderGeometry(0.3,0.4,1,8),toon(0xffffff,{}),n,0),hm=instancedPair(GEO.sphereLo,toon(0xffffff,{}),n,0.015);
     const shirt=['#c93b33','#f2c230','#2f6fb8','#3e8a4c','#6f5a8a','#e98bb4','#f0f0ea','#ef6a1a'],skin=['#f6d2b3','#e8b48a','#c08458','#80543a'];
@@ -1487,7 +1614,7 @@ function buildWorld(){
   {
     const cm=city?toon(0x6a7390,{fog:false,emissive:0x1a2236,emissiveIntensity:1}):tokyo?toon(0xffc2dc,{fog:false,emissive:0x6a3060,emissiveIntensity:0.6}):toon(0xffffff,{fog:false,emissive:0x3a4a60,emissiveIntensity:0.3});world.clouds=[];
     for(let k=0;k<(city?10:20);k++){const g=new THREE.Group();const n=4+Math.floor(R()*3);for(let j=0;j<n;j++){const s=20+R()*18;const m=new THREE.Mesh(GEO.sphereLo,cm);m.position.set((j-n/2)*s*0.9,(R()-0.3)*8,(R()-0.5)*14);m.scale.set(s,s*0.7,s);g.add(m);}
-      g.position.set(minX-300+R()*(maxX-minX+600),(city?RHB[I0]+170:canyon||tokyo||snow||isl?RHB[0]+160:420)+R()*200,minZ-300+R()*(maxZ-minZ+900));WG.add(g);world.clouds.push(g);}
+      g.position.set(minX-300+R()*(maxX-minX+600),(city?RHB[I0]+170:canyon||tokyo||snow||isl||jun?RHB[0]+160:420)+R()*200,minZ-300+R()*(maxZ-minZ+900));WG.add(g);world.clouds.push(g);}
   }
   // ---- distant mountains
   {
@@ -1510,7 +1637,7 @@ function buildWorld(){
         const m=new THREE.Mesh(dome,im);m.scale.set(w,h,w*0.7);m.position.set(x,-6,z);m.rotation.y=R()*3;WG.add(m);
         if(k%3===0){const v=new THREE.Mesh(peak,vm);v.scale.set(w*0.45,h*2.2,w*0.45*0.7);v.position.set(x,h*1.1+h*0.6,z);v.rotation.y=m.rotation.y;WG.add(v);}}   // low hazy islands, one in three with a little volcano
     }
-    for(let k=0;k<(canyon||tokyo||isl?0:28);k++){const a=k/28*Math.PI*2;const sx=Math.sin(a),sz=Math.cos(a);if(sz>0.45&&!snow)continue;
+    for(let k=0;k<(canyon||tokyo||isl||jun?0:28);k++){const a=k/28*Math.PI*2;const sx=Math.sin(a),sz=Math.cos(a);if(sz>0.45&&!snow)continue;
       const rr=(snow?2900:1900)+R()*600,h=(snow?800:600)+R()*600,w=420+R()*300;const x=cx+sx*rr*0.9,z=cz+sz*rr;
       if(snow){let near=1e9;for(let i=0;i<NS;i+=10)near=Math.min(near,Math.hypot(x-PX[i],z-PZ[i]));if(near<w+900)continue;}
       const m=new THREE.Mesh(new THREE.ConeGeometry(1,1,7),mm);m.scale.set(w,h,w);m.position.set(x,h/2-40,z);m.rotation.y=R()*3;WG.add(m);
@@ -1532,6 +1659,7 @@ function buildWorld(){
   if(tokyo)buildTokyo(minX,maxX,minZ,maxZ);
   if(snow)buildSnow(minX,maxX,minZ,maxZ);
   if(isl)buildIsland(minX,maxX,minZ,maxZ);
+  if(jun)buildJungle(minX,maxX,minZ,maxZ);
 }
 /* ---------- Tokiyama scenery: bridges, Tokyo Tower, neon city, sakura, torii, and the pinball obstacles ---------- */
 function buildTokyo(minX,maxX,minZ,maxZ){
@@ -1892,16 +2020,16 @@ function buildIsland(minX,maxX,minZ,maxZ){
   {const rk=[];for(let i=0;i<NS;i++){if(!ROCKY[i]||R()>0.5)continue;for(const sg of [1,-1]){if(R()<0.5)continue;const d=sg*(RAIL+0.9+R()*5),x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d;rk.push([x,RHB[i],z,0.5+R()*1.4]);}}
     const m=instancedPair(GEO.ico,toon(0xffffff,{}),rk.length,0.025);rk.forEach((p,k)=>{M.compose(V.set(p[0],p[1]+p[3]*0.2,p[2]),Q.setFromEuler(E.set(R()*3,R()*3,R()*3)),Sv.set(p[3]*1.4,p[3],p[3]*1.2));m.setMatrixAt(k,M);m.setColorAt(k,col.set(R()<0.6?'#2b2728':'#45302a'));});
     if(m.instanceColor)m.instanceColor.needsUpdate=true;
-    if(T.rocky)for(let k=0;k<4;k++){const sv=T.rocky[0]+120+k*190,i=clamp(Math.round((S0+sv)/DSA),0,NS-1),sg=k%2?1:-1,d=sg*(RAIL+12+k*3),x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d,y=natural(x,z);
+    if(T.rocky)for(const q of T.rocky)for(let k=0;k*190+180<q[1]-q[0];k++){const sv=q[0]+120+k*190,i=clamp(Math.round((S0+sv)/DSA),0,NS-1),sg=k%2?1:-1,d=sg*(RAIL+12+k*3),x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d,y=natural(x,z);
       part(WG,GEO.cone,BAS,[x,y+1,z],[3.2,2.6,3.2],null,0.03);const gm=new THREE.Mesh(new THREE.CircleGeometry(1.1,12),new THREE.MeshBasicMaterial({color:0xff7a2a}));gm.rotation.x=-Math.PI/2;gm.position.set(x,y+2.32,z);WG.add(gm);
       world.isl.smoke.push({x,y:y+2.4,z,n:10,H:34,R0:0.8,R1:7,life:5,s0:1.2,s1:5,dark:0.6});}}
   // ---- start: tiki torches along the run-up, the island's name board, and torches at the beach finish
-  {const fl=new THREE.MeshBasicMaterial({color:0xffa53a}),posts=[];
-    const addT=(i,sg)=>{const d=sg*(RAIL+1.6),x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d,y=RHB[i];posts.push([x,y,z]);const f=new THREE.Mesh(GEO.cone,fl);f.scale.set(0.35,0.9,0.35);f.position.set(x,y+3.15,z);WG.add(f);world.isl.flames.push(f);};
+  {const fl=new THREE.MeshBasicMaterial({color:0xffa53a}),posts=[],flG=new THREE.ConeGeometry(1,1,10).translate(0,0.5,0);flG.userData.shared=true;   // flame grows up from its base, which sits inside the bowl
+    const addT=(i,sg)=>{const d=sg*(RAIL+1.6),x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d,y=RHB[i];posts.push([x,y,z]);const f=new THREE.Mesh(flG,fl);f.scale.set(0.35,0.9,0.35);f.position.set(x,y+2.84,z);WG.add(f);world.isl.flames.push(f);};
     for(let i=2;i<I0+Math.round(40/DSA);i+=Math.round(14/DSA))for(const sg of [1,-1])addT(i,sg);
     const fi=Math.round(FINISH_S/DSA);for(let i=fi-60;i<Math.min(NS-2,fi+20);i+=Math.round(16/DSA))for(const sg of [1,-1])addT(i,sg);
     const pm=instancedPair(GEO.cylLo,toon(0x6b4a2a),posts.length,0.02),cup=instancedPair(GEO.cylLo,toon(0x3a2a1c),posts.length,0.02);
-    posts.forEach((p,k)=>{M.compose(V.set(p[0],p[1]+1.35,p[2]),Q.identity(),Sv.set(0.12,2.7,0.12));pm.setMatrixAt(k,M);M.compose(V.set(p[0],p[1]+2.75,p[2]),Q.identity(),Sv.set(0.28,0.3,0.28));cup.setMatrixAt(k,M);});
+    posts.forEach((p,k)=>{M.compose(V.set(p[0],p[1]+1.35,p[2]),Q.identity(),Sv.set(0.12,2.7,0.12));pm.setMatrixAt(k,M);M.compose(V.set(p[0],p[1]+2.76,p[2]),Q.identity(),Sv.set(0.56,0.36,0.56));cup.setMatrixAt(k,M);});
     const i=I0-Math.round(30/DSA),d=-(RAIL+5),g=new THREE.Group();g.position.set(PX[i]+NX[i]*d,RHB[i],PZ[i]+NZ[i]*d);g.rotation.y=head(i)+Math.PI;WG.add(g);
     for(const sx of [-3.4,3.4])part(g,GEO.cylLo,0x6b4a2a,[sx,2.6,0],[0.35,5.2,0.35],null,0.03);
     part(g,GEO.box,0x3a2a1c,[0,5.2,0],[8.4,2.6,0.4],null,0.04);
@@ -1920,19 +2048,41 @@ function buildIsland(minX,maxX,minZ,maxZ){
       part(g,GEO.box,0x5c6270,[0,1.3,0],[0.15,2.6,0.15],null,0);const b=new THREE.Mesh(new THREE.PlaneGeometry(3.4,0.95),new THREE.MeshBasicMaterial({map:bannerTex(txt,'#c93b33'),side:THREE.DoubleSide}));b.position.set(0,2.5,0);g.add(b);};
     if(OBS)for(const o of OBS.vents)sign(o.s-S0-140,'ERUPTIONS');
     if(OBS&&OBS.rocks.length)sign(Math.min(...OBS.rocks.map(o=>o.s))-S0-150,'FALLING ROCKS');}
+  // a strip over the road between two lateral offsets (functions of the sample), following the road surface
+  const strip=(i0,i1,dA,dB,yOff,mat,uv)=>{const P=[],U=[],I=[];for(let i=i0;i<=i1;i++){for(const d of [dA(i),dB(i)])P.push(PX[i]+NX[i]*d,RHB[i]+bankAt(i,d)+yOff,PZ[i]+NZ[i]*d);
+      U.push(0,uv(i),1,uv(i));if(i<i1){const o=(i-i0)*2;I.push(o,o+1,o+2,o+1,o+3,o+2);}}
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.setIndex(I);g.computeVertexNormals();const m=new THREE.Mesh(g,mat);WG.add(m);return m;};
+  // ---- the lava stream through the boulder field: molten rock flowing downhill with the traffic, black crust along its banks
+  if(T.lava){const L=T.lava,i0=Math.round((S0+L.from)/DSA),i1=Math.round((S0+L.to)/DSA),ft=texLavaFlow();
+    const lm=new THREE.MeshBasicMaterial({map:ft,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+    const taper=i=>(L.half-0.4)*Math.min(1,(i-i0)*DSA/10,(i1-i)*DSA/10)+0.4;   // wells up and sinks away at the ends, wall to wall in between
+    strip(i0,i1,i=>taper(i),i=>-taper(i),0.04,lm,i=>S[i]/14);world.isl.flow=ft;world.isl.flowRange=[S0+L.from,S0+L.to];
+    const cm=toon(0x2a2425,{polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
+    for(const sg of [1,-1])strip(i0,i1,i=>sg*Math.min(taper(i)+0.35,L.half),i=>sg*(taper(i)-0.08),0.05,cm,i=>S[i]/6);
+    const gl=[];for(let i=i0+8;i<i1-8;i+=Math.round(16/DSA))gl.push(i);   // a warm glow hanging over it
+    for(const i of gl){const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:texHalo,color:0xff7a2a,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0.45}));sp.scale.set(12,4,1);sp.position.set(PX[i],RHB[i]+1.2,PZ[i]);WG.add(sp);}}
+  // ---- long cracks in the tarmac here and there (one merged mesh of thin decals)
+  {const cm=new THREE.MeshBasicMaterial({map:texCrack(),transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3,color:0xffffff});
+    const P=[],U=[],I=[],bad=sv=>(T.rocky&&T.rocky.some(q=>sv>q[0]-40&&sv<q[1]+40))||(T.lava&&sv>T.lava.from-50&&sv<T.lava.to+50)||(OBS&&OBS.vents.some(o=>Math.abs(o.s-S0-sv)<45))||sv>T.finishAt-30;
+    let nC=0;for(let k=0;k<400&&nC<46;k++){const sv=40+R()*(T.finishAt-80),len=16+R()*30;if(bad(sv)||bad(sv+len))continue;
+      const i0=Math.round((S0+sv)/DSA),i1=Math.min(NS-2,i0+Math.round(len/DSA)),side=R()<0.5?-1:1,d0=(R()*2-1)*(HALFW-2),d1=clamp(d0+(R()-0.5)*3,-(HALFW-1.5),HALFW-1.5),w=0.9+R()*0.7,base=P.length/3;
+      for(let i=i0;i<=i1;i++){const u=(i-i0)/(i1-i0),bc=SPL[i]>0?side*SPL[i]:0,d=bc+lerp(d0,d1,u);for(const e of [-w/2,w/2]){const dd=d+e;P.push(PX[i]+NX[i]*dd,RHB[i]+bankAt(i,dd)+0.045,PZ[i]+NZ[i]*dd);}
+        U.push(0,u,1,u);if(i<i1){const o=base+(i-i0)*2;I.push(o,o+1,o+2,o+1,o+3,o+2);}}nC++;}
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.setIndex(I);g.computeVertexNormals();const m=new THREE.Mesh(g,cm);m.renderOrder=1;WG.add(m);}
   if(!OBS)return;
   OBS.vis=OBS.vis||{M:new THREE.Matrix4(),q:new THREE.Quaternion(),v:new THREE.Vector3(),sv:new THREE.Vector3()};
   // ---- the lava vent: an oval crater set flush into the road, lava glowing inside; a fountain of lava when it goes
   for(const o of OBS.vents){const g=new THREE.Group();g.position.set(o.x,o.y,o.z);g.rotation.y=Math.atan2(o.tx,o.tz);WG.add(g);
     const gr=(RH[Math.min(NS-1,o.i+3)]-RH[Math.max(0,o.i-3)])/(6*DSA),tl=new THREE.Group();tl.rotation.x=-Math.atan(gr);tl.scale.set(1,1,o.stretch);g.add(tl);
-    const crater=new THREE.Mesh(new THREE.CylinderGeometry(o.R+1.0,o.R+1.6,0.3,28),toon(0x2e2a2b));crater.position.y=-0.08;tl.add(crater);crater.add(new THREE.Mesh(oGeo(crater.geometry),outlineMat(0.03)));
+    const crater=new THREE.Mesh(new THREE.CylinderGeometry(o.R+0.3,o.R+0.6,0.3,32),toon(0x2e2a2b));crater.position.y=-0.08;tl.add(crater);crater.add(new THREE.Mesh(oGeo(crater.geometry),outlineMat(0.03)));
     const glow=new THREE.Mesh(new THREE.CircleGeometry(o.R,28),new THREE.MeshBasicMaterial({map:texLava,color:0xffffff}));glow.rotation.x=-Math.PI/2;glow.position.y=0.1;tl.add(glow);o.glow=glow;
-    for(let k=0;k<14;k++){const a=k/14*Math.PI*2,r2=o.R+0.55;part(tl,GEO.ico,k%2?0x3a3334:0x4a3a34,[Math.cos(a)*r2,0.12,Math.sin(a)*r2],[0.55,0.32,0.55/o.stretch],[k,k*2,0],0.02);}
-    const ringT=new THREE.Mesh(new THREE.RingGeometry(o.R+2.2,o.R+2.75,40),new THREE.MeshBasicMaterial({map:texHazard,side:THREE.DoubleSide}));ringT.rotation.x=-Math.PI/2;ringT.position.y=0.06;tl.add(ringT);
+    for(let k=0;k<22;k++){const a=k/22*Math.PI*2,r2=o.R+0.15;if(Math.abs(Math.cos(a)*r2)>HALFW-0.5)continue;part(tl,GEO.ico,k%2?0x3a3334:0x4a3a34,[Math.cos(a)*r2,0.12,Math.sin(a)*r2],[0.55,0.32,0.55/o.stretch],[k,k*2,0],0.02);}
+    const ringT=new THREE.Mesh(new THREE.RingGeometry(o.R+0.6,o.R+1.0,48),new THREE.MeshBasicMaterial({map:texHazard,side:THREE.DoubleSide}));ringT.rotation.x=-Math.PI/2;ringT.position.y=0.06;tl.add(ringT);
     const fg=new THREE.CylinderGeometry(1.1,o.R*0.85,1,16,1,true);fg.translate(0,0.5,0);
     const f1=new THREE.Mesh(fg,new THREE.MeshBasicMaterial({color:0xff6a1a,transparent:true,opacity:0.85,depthWrite:false,side:THREE.DoubleSide}));f1.position.y=0.3;f1.scale.z=o.stretch;g.add(f1);o.jet=f1;
     const f2=new THREE.Mesh(new THREE.CylinderGeometry(0.5,o.R*0.55,1,10,1,true).translate(0,0.5,0),new THREE.MeshBasicMaterial({color:0xffd24a,transparent:true,opacity:0.95,depthWrite:false,side:THREE.DoubleSide}));f2.position.y=0.3;g.add(f2);o.jet2=f2;
-    o.steamN=28;o.steam=new THREE.InstancedMesh(GEO.sphereLo,new THREE.MeshBasicMaterial({color:0x6a6260,transparent:true,opacity:0.5,depthWrite:false}),o.steamN);o.steam.frustumCulled=false;o.steam.renderOrder=3;WG.add(o.steam);
+    o.steamN=120;o.steam=new THREE.InstancedMesh(GEO.sphereLo,new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0.6,depthWrite:false}),o.steamN);o.steam.frustumCulled=false;o.steam.renderOrder=3;WG.add(o.steam);
+    o.puffs=[];for(let k=0;k<o.steamN;k++){o.puffs.push({t0:-1e9,life:1});o.steam.setColorAt(k,new THREE.Color(0x5a5250));}o.pi=0;o.emit=0;
     o.blobN=36;o.blobs=new THREE.InstancedMesh(GEO.ico,new THREE.MeshBasicMaterial({color:0xff8a2a}),o.blobN);o.blobs.frustumCulled=false;WG.add(o.blobs);}
   // ---- the boulder fissures on the left: small smoking cones with a glowing mouth; each throws one rock at a time
   const rockMat=toon(0x3a3230,{emissive:0x6a1e04,emissiveIntensity:0.55});
@@ -1956,7 +2106,160 @@ function updateIsland(now){
     s2.off=far;}
   m.instanceMatrix.needsUpdate=true;
   if(W.lake){W.lake.rotation.z=t*0.02;}
+  if(W.flow){W.flow.offset.y=-(t*13/14)%1;   // the lava stream runs downhill at ~13 m/s
+    if(player&&state==='race'&&player.s>W.flowRange[0]-40&&player.s<W.flowRange[1]&&Math.random()<0.5){const i=clamp(player.idx+Math.round((10+Math.random()*40)/DSA),0,NS-1),d=(Math.random()-0.5)*5;
+      emit(PX[i]+NX[i]*d,RHB[i]+0.3,PZ[i]+NZ[i]*d,(Math.random()-0.5)*1.5+TX[i]*6,2+Math.random()*3,(Math.random()-0.5)*1.5+TZ[i]*6,0.18+Math.random()*0.15,0.9,Math.random()<0.7?0xffa23a:0xffe070);}}   // embers
   for(let j=0;j<W.flames.length;j++){const f=W.flames[j],q=1+0.18*Math.sin(t*13+j*1.7)+0.1*Math.sin(t*23+j);f.scale.set(0.35*q,0.9*q,0.35*q);}
+}
+/* ---------- Mesozon scenery: the giant start tree and its branch, the hollow trunk, rainforest, vines, the leaves, the rope bridge, rain ---------- */
+let _texBark=null;
+function texBark(){if(_texBark)return _texBark;_texBark=canvasTex(256,256,(x,w,h)=>{   // deep vertical bark ridges with moss
+  x.fillStyle='#4a3626';x.fillRect(0,0,w,h);const r=rng(41);
+  for(let k=0;k<70;k++){const px=r()*w,bw=3+r()*9;x.fillStyle=r()<0.5?'rgba(30,20,12,.55)':'rgba(110,85,60,.35)';x.beginPath();x.moveTo(px,0);for(let y=0;y<=h;y+=16)x.lineTo(px+Math.sin(y*0.05+k)*4,y);x.lineTo(px+bw,h);for(let y=h;y>=0;y-=16)x.lineTo(px+bw+Math.sin(y*0.05+k)*4,y);x.closePath();x.fill();}
+  for(let k=0;k<120;k++){x.fillStyle='rgba(70,120,45,'+(0.25+r()*0.4)+')';x.beginPath();x.ellipse(r()*w,r()*h,3+r()*12,2+r()*6,r()*3,0,6.3);x.fill();}
+},true,true);return _texBark;}
+let _fernGeo=null;
+function fernGeo(){if(_fernGeo)return _fernGeo;const L=[],E=new THREE.Euler(),Q=new THREE.Quaternion(),V=new THREE.Vector3(),Sv=new THREE.Vector3();
+  const fr=new THREE.ConeGeometry(0.42,2.6,4,1,true);fr.translate(0,1.3,0);
+  for(let k=0;k<7;k++){const a=k/7*Math.PI*2,droop=0.9+(k%3)*0.2;Q.setFromEuler(new THREE.Euler(0,a,0,'YXZ'));Q.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(droop,0,0)));
+    L.push([fr,new THREE.Matrix4().compose(V.set(0,0.2,0),Q,Sv.set(1,1,0.18)),k%2?'#3f8f3a':'#2f7a32']);}
+  _fernGeo=mergeColored(L);_fernGeo.userData.shared=true;return _fernGeo;}
+function buildJungle(minX,maxX,minZ,maxZ){
+  const M=new THREE.Matrix4(),Q=new THREE.Quaternion(),E=new THREE.Euler(),V=new THREE.Vector3(),Sv=new THREE.Vector3(),col=new THREE.Color();
+  const T=TRACK,head=i=>Math.atan2(TX[i],TZ[i]),bark=toon(0xffffff,{map:texBark()}),barkD=toon(0x5a4030,{side:THREE.DoubleSide});
+  world.jun={};
+  const strip=(i0,i1,dA,dB,yOff,mat,uv)=>{const P=[],U=[],I=[];for(let i=i0;i<=i1;i++){for(const d of [dA(i),dB(i)])P.push(PX[i]+NX[i]*d,RHB[i]+yOff,PZ[i]+NZ[i]*d);
+      U.push(0,uv(i),1,uv(i));if(i<i1){const o=(i-i0)*2;I.push(o,o+1,o+2,o+1,o+3,o+2);}}
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.setIndex(I);g.computeVertexNormals();const m=new THREE.Mesh(g,mat);WG.add(m);return m;};
+  const skirt=(i0,i1,depth,mat)=>{for(const sg of [1,-1]){const P=[],I=[];for(let i=i0;i<=i1;i++){const d=sg*(RAIL+0.02),x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d;P.push(x,RHB[i]+0.03,z,x,RHB[i]-depth,z);if(i<i1){const o=(i-i0)*2;I.push(o,o+2,o+1,o+1,o+2,o+3);}}
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setIndex(I);g.computeVertexNormals();WG.add(new THREE.Mesh(g,mat));}};
+  const foliage=[];   // [x,y,z,sx,sy,sz,colour]
+  const leafCols=['#2f7a2a','#3d8a32','#28682a','#4a9a3a','#376f2c'];
+  // ---- the giant start tree: a trunk under the tree-top deck, buttress roots, a crown of foliage round the deck, and the branch the ramp runs down
+  {const ic=Math.max(2,I0-Math.round(60/DSA)),cx=PX[ic],cz=PZ[ic],top=RHB[ic]-1.2,gy=natural(cx,cz)-4,R0=24;
+    const tr=new THREE.Mesh(new THREE.CylinderGeometry(R0*0.82,R0,top-gy,30,1,true),bark);tr.position.set(cx,(top+gy)/2,cz);WG.add(tr);
+    tr.material.map.repeat.set(1,1);
+    for(let k=0;k<9;k++){const a=k/9*Math.PI*2+0.3,g=new THREE.Group();g.position.set(cx,gy,cz);g.rotation.y=a;WG.add(g);part(g,GEO.box,0x4a3626,[0,10,R0+5],[3.2,22,14],[-0.42,0,0],0.04);}   // buttress roots
+    skirt(0,I0+Math.round(14/DSA),1.6,barkD);   // the thickness of the deck at the top
+    for(let k=0;k<70;k++){const a=R()*Math.PI*2,rr=R0+6+R()*48,x=cx+Math.sin(a)*rr,z=cz+Math.cos(a)*rr,y=top-8-R()*22+(R()<0.3?R()*30:0);
+      const s2=10+R()*14,i=nearest(x,z,90);if(i>=0){const d=Math.abs((x-PX[i])*NX[i]+(z-PZ[i])*NZ[i]);if(d<RAIL+4+s2*1.3&&y>RHB[i]-6-s2*0.75)continue;}   // never over or beside the road
+      foliage.push([x,y,z,s2*1.3,s2*0.75,s2*1.2,R()]);}
+    // the branch: a great bark-covered limb under the ramp, from the trunk down to where the ramp meets the ground
+    let ie=I0;while(ie<NS-2&&ELEV[ie]>1.2&&S[ie]-S0<700)ie++;
+    const pts=[];for(let i=ic;i<=ie;i+=Math.round(8/DSA)){const u=(i-ic)/Math.max(1,ie-ic);pts.push(new THREE.Vector3(PX[i],RHB[i]-3.4-u*0.4,PZ[i]));}
+    if(pts.length>2){const cu=new THREE.CatmullRomCurve3(pts),tg=new THREE.TubeGeometry(cu,Math.max(8,pts.length*3),3.1,10,false);
+      const pos=tg.attributes.position;for(let k=0;k<pos.count;k++){}   // (kept simple: one radius)
+      const br=new THREE.Mesh(tg,bark);WG.add(br);br.add(new THREE.Mesh(oGeo(tg),outlineMat(0.05)));}
+    // leafy side twigs along the branch
+    for(let i=ic;i<ie;i+=Math.round(28/DSA))for(const sg of [1,-1]){if(R()<0.35)continue;const d=sg*(RAIL+5+R()*8),x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d,s2=5+R()*6;foliage.push([x,RHB[i]-4-R()*6,z,s2*1.3,s2*0.7,s2*1.2,R()]);}
+    // a sign on the deck
+    const g=new THREE.Group(),ib=Math.max(2,I0-Math.round(20/DSA));g.position.set(PX[ib]+NX[ib]*(RAIL+2.2),RHB[ib],PZ[ib]+NZ[ib]*(RAIL+2.2));g.rotation.y=head(ib)+Math.PI;WG.add(g);
+    for(const sx of [-3.2,3.2])part(g,GEO.cylLo,0x5a3d26,[sx,2.4,0],[0.3,4.8,0.3],null,0.03);
+    const b=new THREE.Mesh(new THREE.PlaneGeometry(7.6,2.1),new THREE.MeshBasicMaterial({map:bannerTex('MESOZON','#2f6a2a'),side:THREE.DoubleSide}));b.position.set(0,4.6,0);g.add(b);}
+  // ---- the massive hollow tree: the road goes straight through a hole in its trunk
+  for(const TU of TUNNELS){const ic=(TU.i0+TU.i1)>>1,cx=PX[ic],cz=PZ[ic],tx=TX[ic],tz=TZ[ic],nx=NX[ic],nz=NZ[ic],Rb=(TU.i1-TU.i0)*DSA/2+1.5,W=RAIL+0.4;
+    const ring=[[-W,-0.5],[-W,6.8],[-W*0.78,9.5],[-W*0.45,10.9],[0,11.4],[W*0.45,10.9],[W*0.78,9.5],[W,6.8],[W,-0.5]];
+    const arch=l=>{const a=Math.abs(l);if(a>=W)return -99;for(let k=4;k<ring.length-1;k++){const [d0,y0]=ring[k],[d1,y1]=ring[k+1];if(a>=d0&&a<=d1)return lerp(y0,y1,(a-d0)/(d1-d0));}return 6.8;};
+    const roadY=(x,z)=>{const al=(x-cx)*tx+(z-cz)*tz,i=clamp(ic+Math.round(al/DSA),0,NS-1);return RHB[i];};
+    const NA=64,OFF=[-8,-1,0.6,2,3.5,5,6.4,7.6,8.8,9.8,10.6,11.2,11.8,13,15,19,26,36,50,70,95,125,160];
+    const P=[],U=[],I=[];
+    for(let r=0;r<OFF.length;r++)for(let k=0;k<=NA;k++){const a=k/NA*Math.PI*2,x=cx+Math.cos(a)*Rb*(1-0.0006*Math.max(0,OFF[r])),z=cz+Math.sin(a)*Rb*(1-0.0006*Math.max(0,OFF[r]));P.push(x,roadY(x,z)+OFF[r],z);U.push(k/NA*6,(OFF[r]+8)/14);}
+    for(let r=0;r<OFF.length-1;r++)for(let k=0;k<NA;k++){const a=(k+0.5)/NA*Math.PI*2,x=cx+Math.cos(a)*Rb,z=cz+Math.sin(a)*Rb,lat=(x-cx)*nx+(z-cz)*nz,ym=(OFF[r]+OFF[r+1])/2;
+      if(ym>-0.5&&ym<arch(lat))continue;   // the hole
+      const q=r*(NA+1)+k;I.push(q,q+NA+1,q+1,q+1,q+NA+1,q+NA+2);}
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(U,2));g.setIndex(I);g.computeVertexNormals();
+    const tm=new THREE.Mesh(g,toon(0xffffff,{map:texBark(),side:THREE.DoubleSide}));WG.add(tm);
+    // the lining of the hole: hollow-tree wood, with glowing fungi instead of lamps
+    {const P2=[],U2=[],I2=[],n=ring.length;let acc=[0];for(let r=1;r<n;r++)acc.push(acc[r-1]+Math.hypot(ring[r][0]-ring[r-1][0],ring[r][1]-ring[r-1][1]));
+      const i0=TU.i0-2,i1=TU.i1+2;for(let i=i0;i<=i1;i++){for(let r=0;r<n;r++){const [d,y]=ring[r];P2.push(PX[i]+NX[i]*d,RHB[i]+y,PZ[i]+NZ[i]*d);U2.push(acc[r]/6,S[i]/5);}
+        if(i<i1){const o=(i-i0)*n;for(let r=0;r<n-1;r++)I2.push(o+r,o+r+n,o+r+1,o+r+1,o+r+n,o+r+n+1);}}
+      const g2=new THREE.BufferGeometry();g2.setAttribute('position',new THREE.Float32BufferAttribute(P2,3));g2.setAttribute('uv',new THREE.Float32BufferAttribute(U2,2));g2.setIndex(I2);g2.computeVertexNormals();
+      WG.add(new THREE.Mesh(g2,toon(0x9a7a58,{map:texBark(),side:THREE.DoubleSide,emissive:0x1c120a})));
+      const fm=new THREE.MeshBasicMaterial({color:0xa8ff9a}),fu=[];for(let i=TU.i0+2;i<TU.i1;i+=3)for(const sg of [1,-1])fu.push([PX[i]+NX[i]*sg*(W-0.3),RHB[i]+3+((i*7)%5)*0.8,PZ[i]+NZ[i]*sg*(W-0.3)]);
+      const fi=instancedPair(GEO.sphereLo,fm,fu.length,0);fu.forEach((p,k)=>{M.compose(V.set(p[0],p[1],p[2]),Q.identity(),Sv.set(0.5,0.25,0.5));fi.setMatrixAt(k,M);});}
+    // bark rims round both openings
+    for(const [i,dir] of [[TU.i0,-1],[TU.i1,1]]){const pts=[];for(let k=0;k<=24;k++){const l=-W+2*W*k/24,a=k===0||k===24?-0.3:arch(l);
+        const al=dir*Math.sqrt(Math.max(0,Rb*Rb-l*l)),x=cx+tx*al+nx*l,z=cz+tz*al+nz*l;pts.push(new THREE.Vector3(x,roadY(x,z)+a,z));}
+      const tg=new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),40,0.9,8,false),rm=new THREE.Mesh(tg,toon(0x3a2818));WG.add(rm);rm.add(new THREE.Mesh(oGeo(tg),outlineMat(0.04)));}
+    for(let k=0;k<12;k++){const a=k/12*Math.PI*2+0.13,x=cx+Math.cos(a)*Rb,z=cz+Math.sin(a)*Rb,lat=(x-cx)*nx+(z-cz)*nz;if(Math.abs(lat)<W+6)continue;   // buttress roots (none across the road)
+      const gr=new THREE.Group();gr.position.set(cx,roadY(cx,cz)-2,cz);gr.rotation.y=Math.atan2(Math.cos(a),Math.sin(a));WG.add(gr);part(gr,GEO.box,0x4a3626,[0,8,Rb+4],[3,18,11],[-0.45,0,0],0.04);}
+    for(let k=0;k<14;k++){const a=R()*Math.PI*2,rr=R()*Rb*1.6;const s2=18+R()*16;foliage.push([cx+Math.sin(a)*rr,roadY(cx,cz)+150+R()*30,cz+Math.cos(a)*rr,s2*1.4,s2*0.7,s2*1.3,R()]);}   // its crown, high in the mist
+  }
+  // ---- rainforest: tall trees with umbrella crowns, palms, ferns, hanging creepers
+  const spot=(x,z,minD)=>{const t=terrainInfo(x,z);if(t.dist<minD||t.tun||t.h<2)return null;if(T.cut&&ELEV[t.i]>3&&t.dist<RAIL+40)return null;const a=terrainInfo(x+3,z).h,b=terrainInfo(x,z+3).h;if(Math.abs(a-t.h)>3||Math.abs(b-t.h)>3)return null;return t.h;};
+  const trees=[],palms=[],ferns=[];
+  for(let i=I0+Math.round(80/DSA);i<NS;i+=3)for(const sg of [1,-1]){if(R()<0.25)continue;const d=sg*(FLAT+1+R()*40),x=PX[i]+NX[i]*d+(R()-0.5)*6,z=PZ[i]+NZ[i]*d+(R()-0.5)*6,h=spot(x,z,FLAT-2);if(h===null)continue;const r=R();
+    if(r<0.45)trees.push([x,h,z]);else if(r<0.6)palms.push([x,h,z]);else ferns.push([x,h,z]);}
+  for(let k=0;k<20000&&trees.length<1500;k++){const x=minX+40+R()*(maxX-minX-80),z=minZ+40+R()*(maxZ-minZ-80),h=spot(x,z,FLAT+6);if(h===null)continue;const r=R();
+    if(r<0.6)trees.push([x,h,z]);else if(r<0.72&&palms.length<450)palms.push([x,h,z]);else if(ferns.length<1600)ferns.push([x,h,z]);}
+  {const crownG=new THREE.IcosahedronGeometry(1,1);crownG.userData.shared=true;
+    const tk=instancedPair(new THREE.CylinderGeometry(0.7,1,1,7,1,true),toon(0x5a4030),trees.length,0),cr=instancedPair(crownG,toon(0xffffff,{}),trees.length*2+foliage.length,0.04);
+    let ci=0;trees.forEach((t,k)=>{const H=18+R()*30,rad=0.7+R()*0.9;M.compose(V.set(t[0],t[1]+H/2-0.5,t[2]),Q.identity(),Sv.set(rad,H,rad));tk.setMatrixAt(k,M);
+      for(let l=0;l<2;l++){const w=(6+R()*6)*(l?0.75:1);M.compose(V.set(t[0]+(R()-0.5)*3,t[1]+H+(l?3.5:0)-1,t[2]+(R()-0.5)*3),Q,Sv.set(w,w*0.42,w*0.9));cr.setMatrixAt(ci,M);cr.setColorAt(ci++,col.set(leafCols[Math.floor(R()*leafCols.length)]));}});
+    for(const f of foliage){M.compose(V.set(f[0],f[1],f[2]),Q,Sv.set(f[3],f[4],f[5]));cr.setMatrixAt(ci,M);cr.setColorAt(ci++,col.set(leafCols[Math.floor(f[6]*leafCols.length)]));}
+    if(cr.instanceColor)cr.instanceColor.needsUpdate=true;
+    const pm=instancedPair(palmGeo(),toon(0xffffff,{vertexColors:true}),palms.length,0.03);palms.forEach((p,k)=>{const s2=0.9+R()*0.5;M.compose(V.set(p[0],p[1]-0.2,p[2]),Q.setFromEuler(E.set(0,R()*6.28,0)),Sv.set(s2,s2,s2));pm.setMatrixAt(k,M);});
+    const fm=instancedPair(fernGeo(),toon(0xffffff,{vertexColors:true}),ferns.length,0.02);ferns.forEach((p,k)=>{const s2=0.9+R()*1.1;M.compose(V.set(p[0],p[1],p[2]),Q.setFromEuler(E.set(0,R()*6.28,0)),Sv.set(s2,s2,s2));fm.setMatrixAt(k,M);});
+    // creepers hanging from the canopy beside the road
+    const cp=[];for(let i=I0+20;i<NS;i+=5)for(const sg of [1,-1]){if(R()<0.55||VOID[i]||ELEV[i]>3)continue;const d=sg*(RAIL+2+R()*5),L=8+R()*14,y=RHB[i]+L/2+2+R()*4;cp.push([PX[i]+NX[i]*d,y,PZ[i]+NZ[i]*d,L]);}
+    const vm=instancedPair(GEO.cylLo,toon(0x3d6a2a),cp.length,0);cp.forEach((p,k)=>{M.compose(V.set(p[0],p[1],p[2]),Q.identity(),Sv.set(0.09,p[3],0.09));vm.setMatrixAt(k,M);});}
+  // ---- warning boards
+  const sign=(sv,txt,c)=>{const i=clamp(Math.round((S0+sv)/DSA),0,NS-1),d=-(RAIL+1.6),g=new THREE.Group();g.position.set(PX[i]+NX[i]*d,RHB[i],PZ[i]+NZ[i]*d);g.rotation.y=head(i)+Math.PI;WG.add(g);
+    part(g,GEO.box,0x5a3d26,[0,1.3,0],[0.18,2.6,0.18],null,0);const b=new THREE.Mesh(new THREE.PlaneGeometry(3.6,0.95),new THREE.MeshBasicMaterial({map:bannerTex(txt,c||'#a8452a'),side:THREE.DoubleSide}));b.position.set(0,2.5,0);g.add(b);};
+  if(OBS&&OBS.vines.length)sign(OBS.vines[0].s-S0-150,'SWINGING VINES');
+  if(T.leaves)sign(T.leaves.s-150,'LEAF JUMPS');
+  if(T.ropeBridge)sign(T.ropeBridge[0]-150,'ROPE BRIDGE');
+  // ---- the leaves: five huge leaves over the ravine, each on its own stalk rising from the floor
+  if(T.leafList){const lm=toon(0xffffff,{vertexColors:true,side:THREE.DoubleSide});
+    for(const l of T.leafList){const ic=(l.i0+l.i1)>>1,len=(l.i1-l.i0)*DSA+5,W2=9,NU=26,NV=12,P=[],C=[],I=[],c1=new THREE.Color('#3f9a32'),c2=new THREE.Color('#2a6e24'),cm=new THREE.Color('#b8d86a');
+      for(let a=0;a<=NU;a++){const u=a/NU*2-1,hw=W2*Math.pow(Math.max(0,1-u*u),0.55)+0.3;
+        for(let b=0;b<=NV;b++){const v=b/NV*2-1,al=u*len/2,lat=v*hw,i=clamp(ic+Math.round(al/DSA),0,NS-1);
+          const y=l.h+0.03+0.9*Math.pow(Math.abs(v),4)*smoothstep(4,8,hw)+(u>0.7?0.5*smoothstep(0.7,1,u):0)-(u<-0.85?0.3*smoothstep(-0.85,-1,u):0);
+          P.push(PX[i]+TX[i]*(al-(i-ic)*DSA)+NX[i]*lat,y,PZ[i]+TZ[i]*(al-(i-ic)*DSA)+NZ[i]*lat);
+          const tcol=c1.clone().lerp(c2,Math.abs(v)*0.7+0.15*Math.sin(u*9));if(Math.abs(v)<0.06||(Math.abs(Math.abs(v)-Math.abs(u+1)*0.4)%0.35<0.03))tcol.lerp(cm,0.55);C.push(tcol.r,tcol.g,tcol.b);}}   // midrib and side veins
+      for(let a=0;a<NU;a++)for(let b=0;b<NV;b++){const q=a*(NV+1)+b;I.push(q,q+1,q+NV+1,q+1,q+NV+2,q+NV+1);}
+      const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));g.setAttribute('color',new THREE.Float32BufferAttribute(C,3));g.setIndex(I);g.computeVertexNormals();
+      const m=new THREE.Mesh(g,lm);m.receiveShadow=true;WG.add(m);m.add(new THREE.Mesh(oGeo(g),outlineMat(0.04)));
+      const gy=natural(PX[ic],PZ[ic]),st=new THREE.Mesh(new THREE.CylinderGeometry(0.7,1.3,l.h-gy,10),toon(0x4a8a32));st.position.set(PX[ic],(l.h+gy)/2-0.3,PZ[ic]);WG.add(st);st.add(new THREE.Mesh(oGeo(st.geometry),outlineMat(0.03)));}
+    const ia=Math.round((S0+T.leaves.s)/DSA),ib=GAPS[GAPS.length-1][1],mid=(ia+ib)>>1;   // a stream along the ravine floor
+    const wm=std({color:0x35584a,metalness:0.05,roughness:0.25,envMapIntensity:0.25});const w=new THREE.Mesh(new THREE.PlaneGeometry(26,520),wm);w.rotation.x=-Math.PI/2;w.rotation.z=-head(mid)+Math.PI/2;w.position.set(PX[mid],natural(PX[mid],PZ[mid])+0.6,PZ[mid]);WG.add(w);}
+  // ---- the rope bridge: plank deck (drawn with the road), timber towers at both ends, sagging main ropes, hanger ropes down to the deck edges
+  if(T.ropeBridge){const ia=Math.round((S0+T.ropeBridge[0])/DSA),ib=Math.round((S0+T.ropeBridge[1])/DSA);
+    skirt(ia,ib,0.7,barkD);
+    const ropeM=toon(0xc9a36a),postH=13;
+    for(const i of [ia,ib])for(const sg of [1,-1]){const d=sg*(HALFW+1.0),x=PX[i]+NX[i]*d,z=PZ[i]+NZ[i]*d,gy=Math.min(natural(x,z),RHB[i])-2;
+      part(WG,GEO.box,0x5a3d26,[x,(gy+RHB[i]+postH)/2,z],[1.2,RHB[i]+postH-gy,1.2],[0,head(i),0],0.04);}
+    for(const i of [ia,ib])part(WG,GEO.box,0x5a3d26,[PX[i],RHB[i]+postH-0.5,PZ[i]],[2*(HALFW+1.6),0.9,0.9],[0,head(i),0],0.04);
+    const cableY=i=>{const u=(i-ia)/(ib-ia);return RHB[i]+5+(postH-5)*Math.pow(2*u-1,2);};
+    for(const sg of [1,-1]){const pts=[];for(let i=ia;i<=ib;i+=Math.round(10/DSA)){const d=sg*(HALFW+1.0);pts.push(new THREE.Vector3(PX[i]+NX[i]*d,cableY(i),PZ[i]+NZ[i]*d));}
+      const tg=new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),pts.length*2,0.28,6,false);WG.add(new THREE.Mesh(tg,ropeM));}
+    const hg=[];for(let i=ia+2;i<ib-1;i+=Math.round(6/DSA))for(const sg of [1,-1]){const d=sg*(HALFW+0.95),y0=RHB[i],y1=cableY(i);if(y1-y0<0.6)continue;hg.push([PX[i]+NX[i]*d,(y0+y1)/2,PZ[i]+NZ[i]*d,y1-y0]);}
+    const hm=instancedPair(GEO.cylLo,ropeM,hg.length,0);hg.forEach((p,k)=>{M.compose(V.set(p[0],p[1],p[2]),Q.identity(),Sv.set(0.06,p[3],0.06));hm.setMatrixAt(k,M);});
+    const cb=[];for(let i=ia;i<=ib;i+=Math.round(6/DSA))cb.push(i);   // beams under the deck
+    const bm=instancedPair(GEO.box,toon(0x3a2818),cb.length,0);cb.forEach((i,k)=>{Q.setFromEuler(E.set(0,head(i),0));M.compose(V.set(PX[i],RHB[i]-0.45,PZ[i]),Q,Sv.set(2*HALFW+0.6,0.35,0.5));bm.setMatrixAt(k,M);});
+    const mid=(ia+ib)>>1,wy=natural(PX[mid],PZ[mid])+1.2,wm=std({color:0x35584a,metalness:0.05,roughness:0.25,envMapIntensity:0.25});   // the river in the valley below
+    const w=new THREE.Mesh(new THREE.PlaneGeometry(80,1800),wm);w.rotation.x=-Math.PI/2;w.rotation.z=-head(mid)+Math.PI/2;w.position.set(PX[mid],wy,PZ[mid]);WG.add(w);world.jun.river=w;}
+  // ---- swinging vines: a great branch across the road between two trees, a long vine with a heavy mossy knot of wood on the end
+  if(OBS)for(const o of OBS.vines){const g=new THREE.Group();g.position.set(o.x,o.ay,o.z);g.rotation.y=Math.atan2(o.tx,o.tz);WG.add(g);
+    const sp=RAIL+9;part(g,GEO.cylLo,0x4a3626,[0,1.0,0],[1.1,2*sp+2,1.1],[0,0,Math.PI/2],0.04);   // the branch
+    for(const sx of [-1,1]){const x=o.x+o.nx*sx*sp,z=o.z+o.nz*sx*sp,gy=natural(x,z)-1,H=o.ay+3-gy;const t=new THREE.Mesh(GEO.cylLo,bark);t.scale.set(1.6,H,1.6);t.position.set(sx*sp,(gy-o.ay)+H/2,0);g.add(t);
+      foliage.length;const c=new THREE.Mesh(new THREE.IcosahedronGeometry(1,1),toon(0x2f7a2a));c.scale.set(9,4,8);c.position.set(sx*sp,(gy-o.ay)+H+1,0);g.add(c);}
+    const piv=new THREE.Group();g.add(piv);o.pivot=piv;
+    part(piv,GEO.cylLo,0x3d5a22,[0,-o.L/2,0],[0.2,o.L,0.2],null,0);
+    const knot=new THREE.Mesh(new THREE.IcosahedronGeometry(o.R,1),toon(0x5a4030));knot.position.y=-o.L;knot.scale.set(1,1.15,1);piv.add(knot);knot.add(new THREE.Mesh(oGeo(knot.geometry),outlineMat(0.04)));
+    for(let k=0;k<5;k++)part(piv,GEO.ico,0x3f8a32,[Math.cos(k*1.3)*1.0,-o.L+0.9+(k%2)*0.3,Math.sin(k*1.3)*1.0],[0.7,0.35,0.9],[k,k,0],0);}   // moss and leaves on top
+  // ---- rain: streaks falling round the camera
+  {const N=1600,P=new Float32Array(N*6),g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(P,3));
+    const m=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0xd6e4e6,transparent:true,opacity:0.42}));m.frustumCulled=false;WG.add(m);
+    const off=new Float32Array(N*3);for(let k=0;k<N;k++){off[k*3]=(R()-0.5)*70;off[k*3+1]=R()*40;off[k*3+2]=(R()-0.5)*70;}
+    world.jun.rain={m,P,off,N};}
+}
+// rain streaks follow the camera; each one falls and wraps round inside a box of air around it
+function updateJungle(now,dt){
+  const W=world.jun;if(!W||!W.rain)return;const r=W.rain,cp=camera.position,fall=Math.min(0.1,dt||0.016)*30;
+  for(let k=0;k<r.N;k++){let y=r.off[k*3+1]-fall;if(y<0)y+=40;r.off[k*3+1]=y;
+    const x=cp.x+r.off[k*3],z=cp.z+r.off[k*3+2],yy=cp.y-14+y;r.P[k*6]=x;r.P[k*6+1]=yy;r.P[k*6+2]=z;r.P[k*6+3]=x+0.12;r.P[k*6+4]=yy+1.1;r.P[k*6+5]=z+0.05;}
+  r.m.geometry.attributes.position.needsUpdate=true;
 }
 /* ---------- Nomahe scenery: rock-hewn tunnel with portals, cacti, shrubs, boulders, hoodoos, the split sign ---------- */
 // a tunnel through rock: arched lining, floor, lamps, a roof over the slot in the ground, and cliff-face portals (Nomahe, Whitecow Valley)
@@ -2666,7 +2969,8 @@ function locate(c){
   c.along=dx*TX[best]+dz*TZ[best];c.d=dx*NX[best]+dz*NZ[best];c.s=S[best]+c.along;
 }
 function groundOf(c){
-  const onRoad=roadD(c.idx,c.d)<HALFW+0.35;const arr=onRoad?RH:RHB;
+  const onRoad=roadD(c.idx,c.d)<HALFW+0.35;if(!onRoad&&VOID[c.idx])return {h:RHB[c.idx]-300,grade:0,lat:0,onRoad:false};   // off the side of the rope bridge: nothing but air
+  const arr=onRoad?RH:RHB;
   let i0=c.along>=0?c.idx:c.idx-1;i0=clamp(i0,0,NS-2);
   const bk=bankInfo(c.idx,c.along,c.d);
   return {h:interp(arr,c.idx,c.along)-(onRoad?0:0.1)+bk.h,grade:(arr[i0+1]-arr[i0])/DSA+bk.ds,lat:bk.dd,onRoad};
@@ -2675,7 +2979,7 @@ function stepCar(c,dt){
   locate(c);
   const D=c.dsg,m=D.mass,Iz=m*1.5*D.izf,LA=LW*(1-D.wd),LB=LW*D.wd;
   const gi=groundOf(c),gh=c.out?-1e4:gi.h,grade=gi.grade,onRoad=gi.onRoad;c.onRoad=onRoad;c.surf=onRoad?SURF[c.idx]:-1;c.onDirt=c.surf===1;c.onSnow=c.surf>=2;
-  if(c.out){c.outT=(c.outT||0)+dt;if(c.outT>1.3){c.out=false;c.outT=0;c.ejectT=null;respawn(c);if(c===player)flash('Knocked out!','Back on track');return;}}
+  if(c.out){c.outT=(c.outT||0)+dt;if(c.outT>1.3){const fell=c.fell;c.out=false;c.outT=0;c.ejectT=null;c.fell=false;respawn(c);if(c===player)flash(fell?'You fell!':'Knocked out!','Back on track');return;}}
   const tx=TX[c.idx],tz=TZ[c.idx];
   const sp=Math.sin(c.psi),cp=Math.cos(c.psi);
   const fx=sp,fz=cp,lx=cp,lz=-sp;
@@ -2684,7 +2988,7 @@ function stepCar(c,dt){
   c.grounded=c.y<=gh+(ROCKY[c.idx]?0.5:0.06);   // on Aloma's rock field the little hops off the humps don't take the tyres off the road
   let Fx=0,Fz=0,Tq=0;
   const dk=0.5*RHO*D.cda*1.1*spd*(1-DRAFT_MAX*c.draft);Fx-=dk*c.vx;Fz-=dk*c.vz;  // aero drag (less when slipstreaming)
-  const mu=(onRoad?1.05*SURF_GRIP[c.surf]:TRACK.env==='snow'?0.45:0.6)*ARC_GRIP*D.grip;   // dirt: less grip, same rolling speed as tarmac
+  const mu=(onRoad?1.05*SURF_GRIP[c.surf]:TRACK.env==='snow'?0.45:0.6)*ARC_GRIP*D.grip*(TRACK.grip||1);   // TRACK.grip: Mesozon's wet roads (rain: 60%)   // dirt: less grip, same rolling speed as tarmac
   // steering: the wheel can turn up to what the front tyres can actually use at this speed
   // extra lock is always available when steering into a slide (counter-steer)
   const bNow=spd>3&&u>0?Math.atan2(v,u):0;
@@ -2746,11 +3050,12 @@ function stepCar(c,dt){
   if(TUNNELS.length&&inTunnel(c.idx)){const top=RHB[c.idx]+9;if(c.y>top){c.y=top;if(c.vy>0)c.vy*=-0.2;}}   // tunnel roof
   locate(c);const g2=groundOf(c);
   if(c.y<=g2.h&&!c.out){const impact=gVy-c.vy;c.y=g2.h;if(c.airT>0.12)land(c,impact);c.airT=0;c.vy=gVy;}
+  if(!c.out&&(VOID[c.idx]||(T_LEAVES()&&inGap(c.idx)))&&c.y<LINEH[c.idx]-6){c.out=true;c.outT=0;c.fell=true;}   // dropped off the rope bridge or into the ravine between the leaves
   const relA=c.psi-Math.atan2(TX[c.idx],TZ[c.idx]);
   const reach=Math.abs(c.box.hw*Math.cos(relA))+Math.abs(c.box.hl*Math.sin(relA));   // how far the box sticks out sideways
   const wallC=BARRIER-reach,spl=SPL[c.idx],ad=Math.abs(c.d);
   // outer barrier, or (where the road splits) the rock between the branches; a wall that closes in along the course counts as moving towards you
-  const outer=ad-spl>wallC+RAILX[c.idx],innerW=spl>0&&spl-ad>wallC;
+  const outer=!VOID[c.idx]&&ad-spl>wallC+RAILX[c.idx],innerW=spl>0&&spl-ad>wallC;
   // a cannon ball can throw you clean over the barrier: once you're above it, you're out of the course
   if(outer&&!c.out&&c.ejectT!=null&&raceT-c.ejectT<2.5&&c.y>g2.h+1.1){c.out=true;c.outT=0;if(OBS)OBS.stats.out++;}
   if((outer||innerW)&&!c.out){
@@ -2771,7 +3076,7 @@ function stepCar(c,dt){
 function land(c,impact){
   if(impact>2.2){
     c.bounceV-=impact*0.3;
-    const soft=JUMPS.some(j=>j[2]==='snow'&&c.idx>j[1]&&c.idx<j[1]+70/DSA)||ROCKY[c.idx]||SPLH[c.idx]!==0;   // landing a snow kicker onto soft snow (or hopping Aloma's rock humps and twin-road hills): no speed lost
+    const soft=JUMPS.some(j=>j[2]==='snow'&&c.idx>j[1]&&c.idx<j[1]+70/DSA)||ROCKY[c.idx]||SPLH[c.idx]!==0||LEAFZ[c.idx]||(T_LEAVES()&&GAPS.some(g=>Math.abs(c.idx-g[1])<4));   // (Mesozon: the giant leaves are springy) landing a snow kicker onto soft snow (or hopping Aloma's rock humps and twin-road hills): no speed lost
     const k=soft?1:1-Math.min(0.1,(impact-2)*0.012);c.vx*=k;c.vz*=k;
     for(let n=0;n<8;n++)emit(c.x+(Math.random()-0.5)*2.4,c.y+0.2,c.z+(Math.random()-0.5)*2.4,(Math.random()-0.5)*4,1+Math.random()*2,(Math.random()-0.5)*4,0.5+Math.random()*0.4,0.7,c.onRoad?0xe6e6e6:0xb9a577);
     if(c===player){shake=Math.min(1,shake+impact*0.07);thud(Math.min(1,impact/8));if(c.airT>0.55)flash('Big air!',c.airT.toFixed(1)+' s');}
@@ -2784,28 +3089,40 @@ function hit(c,v,x,z){
 function carAxes(c){const sp=Math.sin(c.psi),cp=Math.cos(c.psi);return {fx:sp,fz:cp,lx:cp,lz:-sp,cx:c.x+sp*c.box.oz,cz:c.z+cp*c.box.oz};}
 function corners(c,a){const b=c.box,o=[];for(const [sf,sl] of [[1,1],[1,-1],[-1,1],[-1,-1]])o.push([a.cx+a.fx*b.hl*sf+a.lx*b.hw*sl,a.cz+a.fz*b.hl*sf+a.lz*b.hw*sl]);return o;}
 let collCount=0;
-function collide(){
+const R0pair=(A,B)=>!!(A.remote||B.remote);
+function collide(H){H=H||1/240;
   for(let ia=0;ia<cars.length;ia++)for(let ib=ia+1;ib<cars.length;ib++){
     const A=cars[ia],B=cars[ib],ra=!!A.remote,rb=!!B.remote;if(ra&&rb)continue;
     if(isGhost(A)||isGhost(B))continue;   // phantom after a reset
-    if(Math.abs(A.y-B.y)>(ra||rb?2.2:1.6))continue;
     const dx0=B.x-A.x,dz0=B.z-A.z;if(dx0*dx0+dz0*dz0>36)continue;
+    // one above the other? compare heights above the road, not raw heights: on a steep drop the car 4 m ahead sits 2-3 m lower
+    // on the same road, and the raw test used to let cars sink into each other there and then spring apart with a jolt
+    if(Math.abs((A.y-groundOf(A).h)-(B.y-groundOf(B).h))>(ra||rb?2.2:1.6))continue;
+    const cpA=Math.cos(A.pitch||0),cpB=Math.cos(B.pitch||0);   // a car tilted down a slope covers less ground from above
     const a=carAxes(A),b=carAxes(B),dx=b.cx-a.cx,dz=b.cz-a.cz;
+    // CUSH: an invisible cushion round each car's own (local) contact box. Cars closing slowly start matching speeds inside it,
+    // before the bodies touch, so a nudge from behind is a gentle lean instead of a jolt; a real hit goes straight through it
+    const CUSH=R0pair(A,B)?0:0.3;
     let best=1e9,nx=0,nz=0,fromA=true;
     for(const [ax,az,isA] of [[a.fx,a.fz,1],[a.lx,a.lz,1],[b.fx,b.fz,0],[b.lx,b.lz,0]]){
-      const rA=A.box.hl*Math.abs(a.fx*ax+a.fz*az)+A.box.hw*Math.abs(a.lx*ax+a.lz*az);
-      const rB=B.box.hl*Math.abs(b.fx*ax+b.fz*az)+B.box.hw*Math.abs(b.lx*ax+b.lz*az);
-      const dist=dx*ax+dz*az,ov=rA+rB-Math.abs(dist);
+      const rA=A.box.hl*cpA*Math.abs(a.fx*ax+a.fz*az)+A.box.hw*Math.abs(a.lx*ax+a.lz*az);
+      const rB=B.box.hl*cpB*Math.abs(b.fx*ax+b.fz*az)+B.box.hw*Math.abs(b.lx*ax+b.lz*az);
+      const dist=dx*ax+dz*az,ov=rA+rB+CUSH-Math.abs(dist);
       if(ov<=0){best=-1;break;}
       if(ov<best){best=ov;const sg=dist<0?-1:1;nx=ax*sg;nz=az*sg;fromA=!!isA;}
     }
     if(best<=0)continue;
+    const cushOnly=best<=CUSH;best-=CUSH;   // best = real overlap of the bodies (negative: only in the cushion)
     // contact point: deepest corner of the other box
     let px=0,pz=0;
     if(fromA){let m=1e9;for(const q of corners(B,b)){const t=q[0]*nx+q[1]*nz;if(t<m){m=t;px=q[0];pz=q[1];}}}
     else{let m=-1e9;for(const q of corners(A,a)){const t=q[0]*nx+q[1]*nz;if(t>m){m=t;px=q[0];pz=q[1];}}}
     const ma=A.dsg.mass,mb=B.dsg.mass,IA=ma*1.5*A.dsg.izf,IB=mb*1.5*B.dsg.izf;
-    if(!ra){A.x-=nx*best*mb/(ma+mb);A.z-=nz*best*mb/(ma+mb);}if(!rb){B.x+=nx*best*ma/(ma+mb);B.z+=nz*best*ma/(ma+mb);}
+    // how hard is this contact? a light touch or a car leaning on another is handled like soft bumpers: no instant shove, the cars are
+    // eased apart through their speeds only (never by moving them), so pushing a car along stays smooth and letting go has no jump
+    const R0=ra||rb,vn0=((B.vx+B.r*(pz-B.z))-(A.vx+A.r*(pz-A.z)))*nx+((B.vz-B.r*(px-B.x))-(A.vz-A.r*(px-A.x)))*nz;
+    const vl0=(B.vx-A.vx)*nx+(B.vz-A.vz)*nz,hard=R0?1:smoothstep(2.5,6,-Math.min(vn0,vl0*0.5+vn0*0.5)),corr=cushOnly?0:hard*best+(1-hard)*Math.max(0,best-0.06)*0.5;
+    if(!ra){A.x-=nx*corr*mb/(ma+mb);A.z-=nz*corr*mb/(ma+mb);}if(!rb){B.x+=nx*corr*ma/(ma+mb);B.z+=nz*corr*ma/(ma+mb);}
     // another player's car: if they already told us about this bump, it's been applied, don't hit twice
     const R=ra?A:rb?B:null;if(R&&R.gotHitT!=null&&raceT-R.gotHitT<0.5)continue;
     // and once we've bumped another player, their car on our screen only reflects that a moment later: one bump per 0.4 s,
@@ -2815,22 +3132,26 @@ function collide(){
     // with another player's car, only its straight-line speed is trustworthy on our screen (its spin is a guess), and a mere brush isn't a bump
     const vn=R?((B.vx-A.vx)*nx+(B.vz-A.vz)*nz):((B.vx+B.r*rbz)-(A.vx+A.r*raz))*nx+((B.vz-B.r*rbx)-(A.vz-A.r*rax))*nz;
     if(R&&vn>-0.8)continue;
-    if(vn<0){
+    const sepV=Math.max(0,best-0.01)*8;   // bodies actually pressed together: eased apart
+    if(cushOnly&&hard>=1)continue;   // a real hit: the cushion does nothing, the impact happens when the bodies meet
+    if((vn<0&&!cushOnly)||(hard<1&&vn<sepV)){
       const kA=raz*nx-rax*nz,kB=rbz*nx-rbx*nz;
-      const j=-1.3*vn/(1/ma+1/mb+kA*kA/IA+kB*kB/IB);
+      // proper hit: instant, with bounce and spin. soft part: no bounce, no spin, the speed difference evened out gently at first touch (~0.16 s), firmer the more the bumpers squash
+      const dep=best+CUSH,tau=lerp(0.22,0.035,smoothstep(CUSH*0.5,CUSH+0.05,dep));   // gentle at the edge of the cushion, firm once the bodies touch
+      const j=((vn<0&&!cushOnly?-1.3*vn*hard:0)+(1-hard)*Math.max(0,sepV-vn)*Math.min(1,H/tau))/(1/ma+1/mb+kA*kA/IA+kB*kB/IB);
       // both cars take their share, exactly like single player; another player's car gets its share shown here right away
       // and sent to that player, whose own game applies it to their car
       A.vx-=j/ma*nx;A.vz-=j/ma*nz;B.vx+=j/mb*nx;B.vz+=j/mb*nz;
       // hit spin: off-centre hits still rotate a car, but softened and capped per contact so a T-bone rarely spins it round
-      const SPIN_K=0.25,SPIN_CAP=0.35,dA=-clamp(SPIN_K*j*kA/IA,-SPIN_CAP,SPIN_CAP),dB=clamp(SPIN_K*j*kB/IB,-SPIN_CAP,SPIN_CAP);
+      const SPIN_K=0.25*hard,SPIN_CAP=0.35,dA=-clamp(SPIN_K*j*kA/IA,-SPIN_CAP,SPIN_CAP),dB=clamp(SPIN_K*j*kB/IB,-SPIN_CAP,SPIN_CAP);
       if(!ra)A.r+=dA;if(!rb)B.r+=dB;
       if(R&&NET.dbg)(NET.log=NET.log||[]).push('hit vn '+vn.toFixed(2)+' j '+Math.round(j)+' dv '+Math.round(j/ma*3.6)+'kmh A '+(ra?'remote':'me')+' vA '+Math.round(Math.hypot(A.vx,A.vz)*3.6)+' vB '+Math.round(Math.hypot(B.vx,B.vz)*3.6));
       if(R){const sg=R===A?-1:1,jx=sg*j*nx,jz=sg*j*nz,dr=R===A?dA:dB,m=R.dsg.mass;
         R.kvx=(R.kvx||0)+jx/m;R.kvz=(R.kvz||0)+jz/m;R.kr=clamp((R.kr||0)+dr,-1.2,1.2);R.kickT=raceT;R.hitDoneT=raceT;
         const P=R.pendHit||(R.pendHit={jx:0,jz:0,r:0});P.jx+=jx;P.jz+=jz;P.r+=dr;}
-      A.hitT=B.hitT=0.8;
+      if(!cushOnly)A.hitT=B.hitT=0.8;
       if(-vn>1)collCount++;
-      if((A===player||B===player)&&-vn>2){thud(Math.min(0.7,-vn/10));shake=Math.min(1,shake+0.15);}
+      if((A===player||B===player)&&-vn>2&&raceT-(collide.thudT||-9)>0.3){collide.thudT=raceT;thud(Math.min(0.7,-vn/10));shake=Math.min(1,shake+0.15*hard);}   // one thud per bump, not one per physics step while the bumpers are pressed together
     }
   }
 }
@@ -2862,11 +3183,13 @@ function tryPush(c){
 }
 const GHOST_SECS=3;
 const isGhost=c=>c.ghostT>0||!!c.ghostNet;
-function respawn(c){
-  let i=clamp(c.idx+3,0,NS-3);for(const g of GAPS)if(i>g[0]-4&&i<g[1]+3)i=Math.min(NS-3,g[1]+3);
+const RESET_MANUAL_V=36/3.6,RESET_AUTO_V=70/3.6;   // you pressed reset: 36 km/h; the game put you back (knocked out, stuck, lost): 70 km/h
+function respawn(c,manual){
+  const byRock=!manual&&c.rockT!=null&&raceT-c.rockT<6;   // knocked out by an Aloma lava boulder: back on where you were hit (still on the lava)
+  let i=clamp((byRock?c.rockI:c.idx)+3,0,NS-3);for(const g of GAPS)if(i>g[0]-4&&i<g[1]+3)i=Math.min(NS-3,g[1]+3);
   const sp=SPL[i],d=sp>0?(Math.sign(c.d)||1)*sp+clamp(Math.abs(c.d)-sp,-2,2)*(Math.sign(c.d)||1):clamp(c.d,-2,2);
-  const rk=c.rockV&&c.ejectT!=null&&raceT-c.ejectT<6?Math.max(10,0.6*c.rockV):10;c.rockV=0;   // knocked out by an Aloma lava boulder: back on with some of your speed
-  placeOnTrack(c,S[i],d,rk);c.stuckT=0;c.driftCharge=0;c.out=false;c.outT=0;c.ejectT=null;
+  c.rockT=null;
+  placeOnTrack(c,S[i],d,manual?RESET_MANUAL_V:RESET_AUTO_V);c.stuckT=0;c.driftCharge=0;c.out=false;c.outT=0;c.ejectT=null;
   c.ghostT=GHOST_SECS;c.tow=null;   // phantom: other cars pass through you for 3 s (the track, barriers and obstacles still count)
   if(c===player)flash('Back on track');
 }
@@ -2877,7 +3200,7 @@ function respawn(c){
 const obsClock=()=>state==='race'?raceT:state==='countdown'?-countT:performance.now()/1000;
 function trackPoint(s,d){const i=clamp(Math.round((S0+s)/DSA),0,NS-1);return {i,x:PX[i]+NX[i]*d,z:PZ[i]+NZ[i]*d,y:RH[i],tx:TX[i],tz:TZ[i],nx:NX[i],nz:NZ[i],s:S[i]};}
 function makeObstacles(cfg){
-  const O={spin:[],cannons:[],bumpers:[],fans:[],hammers:[],geysers:[],vents:[],rocks:[],id:0,stats:{noodle:0,ball:0,bump:0,hammer:0,out:0,vent:0,rock:0}};
+  const O={spin:[],cannons:[],bumpers:[],fans:[],hammers:[],geysers:[],vents:[],rocks:[],vines:[],id:0,stats:{noodle:0,ball:0,bump:0,hammer:0,out:0,vent:0,rock:0,vine:0}};
   for(const q of cfg.spinners||[]){const d=q.side*(RAIL+2.2),p=trackPoint(q.s,d),i=p.i,g=(RH[Math.min(NS-1,i+2)]-RH[Math.max(0,i-2)])/(4*DSA);
     O.spin.push(Object.assign(p,{y:RH[i],L:RAIL+2.2+RAIL+3.2,w:-q.side*Math.abs(q.w),ph:q.s*0.37,d,side:q.side,g,H:1.2,id:O.id++}));}   // arm tip just clears the far barrier
   for(const q of cfg.cannons||[]){const p=trackPoint(q.s,0);O.cannons.push(Object.assign(p,{side:q.side,period:q.period,ph:q.ph,R:2.1,vb:24,start:RAIL+5,end:RAIL+14,id:O.id++}));}
@@ -2891,8 +3214,10 @@ function makeObstacles(cfg){
       O.hammers.push({s:sp,i,x:PX[i],z:PZ[i],y:line-3,L:q.L,w:q.w,ph:q.ph,R:1.5,tx:TX[i],tz:TZ[i],nx:NX[i],nz:NZ[i],id:O.id++});}}
   for(const q of cfg.geysers||[]){const p=trackPoint(q.s,0);O.geysers.push(Object.assign(p,{period:q.period,dur:q.dur,ph:q.ph,R:3.6,id:O.id++}));}
   // Aloma's lava vent: erupts at irregular moments, but from a fixed (seeded) timetable so every player online sees the same eruptions
-  for(const q of cfg.vents||[]){const p=trackPoint(q.s,0),r=rng(900+q.seed),sched=[];let t=1.2+r()*2;while(t<1500){const dur=1.3+r()*0.8;sched.push(t,t+dur);t+=dur+2.2+r()*4.6;}
+  for(const q of cfg.vents||[]){const p=trackPoint(q.s,0),r=rng(900+q.seed),sched=[];let t=1.2+r()*2;while(t<1500){const dur=1.3+r()*0.8;sched.push(t,t+dur);t+=dur+(q.gap?q.gap[0]+r()*(q.gap[1]-q.gap[0]):2.2+r()*4.6);}
     O.vents.push(Object.assign(p,{R:q.R,stretch:q.stretch||1,sched,cyc:t,id:O.id++}));}
+  // Mesozon's swinging vines: a heavy knot of wood on a long vine hung from a branch high over the road, swinging across it wall to wall
+  for(const q of cfg.vines||[]){const p=trackPoint(q.s,0),L=38;O.vines.push(Object.assign(p,{L,ay:p.y+L+1.9,amp:Math.asin(10/L),period:q.period,ph:q.ph,R:1.05,id:O.id++}));}
   // lava boulders: lobbed from a fissure on the left, they land somewhere on the road and roll on across it and out through the right-hand barrier
   for(const q of cfg.rocks||[]){const p=trackPoint(q.s,0),d0=RAIL+15,lx=p.x+p.nx*d0,lz=p.z+p.nz*d0;
     O.rocks.push(Object.assign(p,{period:q.period,ph:q.ph,seed:q.seed,R:1.5,vb:22,vr:19,d0,dEnd:-(RAIL+10),h0:Math.max(natural(lx,lz)+5.2,p.y+3)-p.y,id:O.id++}));}
@@ -2909,11 +3234,14 @@ function ventAt(o,t){if(t<0)return {h:0,warn:0};const tt=t%o.cyc,S=o.sched;let l
   while(lo<hi){const m=(lo+hi+1)>>1;if(S[m*2]<=tt)lo=m;else hi=m-1;}
   const a0=S[lo*2],a1=S[lo*2+1];if(tt>=a0&&tt<a1){const a=(tt-a0)/(a1-a0);return {h:24*Math.min(1,a*6)*(a>0.8?(1-a)/0.2:1),warn:0};}
   const nxt=tt<a0?a0:(lo*2+2<S.length?S[lo*2+2]:o.cyc+S[0]),w=nxt-tt;return {h:0,warn:w<1.1?1-w/1.1:0};}
+// vine swing angle (0 = hanging straight down over the middle of the road, + = towards the left) and its rate
+const vineAng=(o,t)=>o.amp*Math.sin(2*Math.PI*t/o.period+o.ph),vineRate=(o,t)=>o.amp*2*Math.PI/o.period*Math.cos(2*Math.PI*t/o.period+o.ph);
+function vineBob(o,t){const a=vineAng(o,t),d=o.L*Math.sin(a);return {d,x:o.x+o.nx*d,z:o.z+o.nz*d,y:o.ay-o.L*Math.cos(a),v:o.L*Math.cos(a)*vineRate(o,t)};}
 // a repeatable random number for shot n of a launcher (the same on every client)
 const ihash=a=>{a|=0;a=Math.imul(a^(a>>>16),0x45d9f3b);a=Math.imul(a^(a>>>16),0x45d9f3b);a^=a>>>16;return (a>>>0)/4294967296;};
 // lava boulder: where it is at time t (null between shots). y is the bottom of the rock above the road.
 function rockAt(o,t){if(t<o.ph)return null;const n=Math.floor((t-o.ph)/o.period),tau=t-o.ph-n*o.period;
-  const dl=-1.5+6*ihash(n*7919+o.seed*104729),ha=2.5+2.5*ihash(n*7919+o.seed*104729+1299709),T1=(o.d0-dl)/o.vb;
+  const dl=HALFW-1.4+1.0*ihash(n*7919+o.seed*104729),ha=2.5+2.5*ihash(n*7919+o.seed*104729+1299709),T1=(o.d0-dl)/o.vb;
   let d,y;
   if(tau<T1){const u=tau/T1;d=o.d0-o.vb*tau;y=lerp(o.h0,0,u)+4*ha*u*(1-u);}                                   // lobbed in from the fissure
   else{const e=tau-T1;d=dl-o.vr*e;if(d<o.dEnd)return null;y=Math.abs(Math.sin(e*7.5))*0.55*Math.exp(-e*0.9);}   // bouncing and rolling across
@@ -2982,11 +3310,20 @@ function obstacleHits(c,t,dt){
     if((al/(o.R*o.stretch+m))**2+(la/(o.R+m))**2<1&&c.y<o.y+g.h&&cd(c,o,t,1.2)){c.vy=Math.max(c.vy,16.5);c.grounded=false;c.r+=(Math.random()-0.5)*2.4;c.hitT=0.4;
       if(c===player){flash('ERUPTION!','','red');shake=Math.min(1,shake+0.5);whoosh();}OBS.stats.vent++;
       for(let n=0;n<8;n++)emit(c.x+(Math.random()-0.5)*2,c.y+0.4,c.z+(Math.random()-0.5)*2,(Math.random()-0.5)*5,4+Math.random()*5,(Math.random()-0.5)*5,0.35,0.8,n%2?0xff7a1a:0xffc23a);}}
+  // lava stream: ride it and it hurries you along towards ~190 km/h
+  const LV=TRACK.lava;if(LV&&c.grounded){const rs=c.s-S0;if(rs>=LV.from&&rs<=LV.to&&Math.abs(c.d)<LV.half+0.3){const tx=TX[c.idx],tz=TZ[c.idx],u=c.vx*tx+c.vz*tz;
+    if(u<LV.VT){const a=Math.min(10,1.6*(LV.VT-u));c.vx+=tx*a*dt;c.vz+=tz*a*dt;}c.lavaT=0.3;}}
+  // swinging vines: the knot smashes you sideways the way it's swinging, often over the wall and out
+  for(const o of OBS.vines){if(Math.abs(c.s-o.s)>5||isGhost(c))continue;const b=vineBob(o,t);
+    if(c.y>b.y+o.R||c.y+1.3<b.y-o.R)continue;
+    const cap=carCapsule(c),r=segSeg(cap.ax,cap.az,cap.bx,cap.bz,b.x,b.z,b.x,b.z);
+    if(r.d<o.R+cap.r&&cd(c,o,t,1.0)){const sg=b.v>=0?1:-1,push=Math.abs(b.v)*1.25+8;c.vx+=o.nx*sg*push;c.vz+=o.nz*sg*push;c.vy=Math.max(c.vy,8);c.grounded=false;c.r+=(Math.random()-0.5)*6;c.ejectT=t;
+      knock(c,'WHACK!',12);OBS.stats.vine++;hit(c,12,b.x,b.z);for(let n=0;n<6;n++)emit(b.x,b.y,b.z,(Math.random()-0.5)*6,2+Math.random()*3,(Math.random()-0.5)*6,0.35,0.6,n%2?0x5a8a32:0x6b4a2a);}}
   // lava boulders: a hit knocks you hard to the right, often clean over the barrier and out
   for(const o of OBS.rocks){if(Math.abs(c.s-o.s)>6||isGhost(c))continue;const b=rockAt(o,t);if(!b)continue;
     if(c.y>b.y+o.R||c.y+1.3<b.y-o.R)continue;
     const cap=carCapsule(c),r=segSeg(cap.ax,cap.az,cap.bx,cap.bz,b.x,b.z,b.x,b.z);
-    if(r.d<o.R+cap.r&&cd(c,o,t,1.0)){c.rockV=Math.hypot(c.vx,c.vz);c.vx-=o.nx*24;c.vz-=o.nz*24;c.vy=Math.max(c.vy,9);c.grounded=false;c.r+=(Math.random()-0.5)*6;c.ejectT=t;
+    if(r.d<o.R+cap.r&&cd(c,o,t,1.0)){c.rockT=t;c.rockI=c.idx;c.vx-=o.nx*24;c.vz-=o.nz*24;c.vy=Math.max(c.vy,9);c.grounded=false;c.r+=(Math.random()-0.5)*6;c.ejectT=t;
       knock(c,'LAVA ROCK!',12);OBS.stats.rock++;hit(c,12,b.x,b.z);for(let n=0;n<6;n++)emit(b.x,b.y,b.z,(Math.random()-0.5)*6,2+Math.random()*3,(Math.random()-0.5)*6,0.4,0.6,n%2?0xff6a1a:0x2a2626);}}
   // hammers over the pit: the head sweeps up through the jump; get hit and you're flung skyward
   for(const o of OBS.hammers){if(Math.abs(c.s-o.s)>o.L+4||Math.abs(c.d)>HALFW+1.5)continue;
@@ -3021,11 +3358,24 @@ function updateObstacles(t,dt){
     if(!o.was&&on&&player&&Math.abs(player.s-o.s)<110)whoosh();o.was=on;
     if(g.warn>0.4&&!o.rumbled&&player&&Math.abs(player.s-o.s)<90){o.rumbled=true;thud(0.35);}if(on)o.rumbled=false;
     const M=OBS.vis.M,Q=OBS.vis.q,V=OBS.vis.v,Sv=OBS.vis.sv;
-    for(let k=0;k<o.steamN;k++){const life=2.6,a=((t*0.8+k*life/o.steamN)%life)/life,top=on?g.h*1.2:3+5*g.warn,ang=k*2.4,rad=(on?2.5:1)+a*(on?8:2.5),sc=(on?1.8:0.8)+a*(on?4.5:1.8);
-      M.compose(V.set(o.x+Math.cos(ang)*rad,o.y+0.5+a*top,o.z+Math.sin(ang)*rad),Q,Sv.set(sc,sc*0.8,sc));o.steam.setMatrixAt(k,M);}
-    o.steam.instanceMatrix.needsUpdate=true;o.steam.material.opacity=on?0.6:0.3+0.25*g.warn;
+    // smoke: each puff is let go and then lives its own life, rising, spreading, drifting downwind and fading into the sky,
+    // so when the fountain stops the cloud carries on up and clears by itself (it doesn't drop back into the hole)
+    if(!o.puffs)continue;
+    const dtS=Math.min(0.1,Math.max(0,dt));o.emit+=(on?24:1.5+7*g.warn)*dtS;
+    while(o.emit>=1){o.emit-=1;const p=o.puffs[o.pi];o.pi=(o.pi+1)%o.steamN;const a=Math.random()*6.283,rr=Math.random();
+      p.t0=t;p.x=o.x+(Math.random()-0.5)*o.R*1.6*o.nx+(Math.random()-0.5)*o.R*o.stretch*1.6*o.tx;p.z=o.z+(Math.random()-0.5)*o.R*1.6*o.nz+(Math.random()-0.5)*o.R*o.stretch*1.6*o.tz;
+      p.y=o.y+0.5+(on?rr*g.h*0.85:0.2);p.vy=on?3.5+Math.random()*4:1.2+Math.random();p.life=on?6+Math.random()*3:3+Math.random()*1.5;p.s0=on?1.8+Math.random()*1.8:0.7+Math.random()*0.5;
+      p.vx=Math.cos(a)*(on?1.6:0.5);p.vz=Math.sin(a)*(on?1.6:0.5);p.big=on;}
+    const SKY=OBS.vis.sky||(OBS.vis.sky=new THREE.Color(0xd9eef4)),DK=OBS.vis.dk||(OBS.vis.dk=new THREE.Color(0x4f4846)),cc=OBS.vis.cc||(OBS.vis.cc=new THREE.Color());
+    for(let k=0;k<o.steamN;k++){const p=o.puffs[k],age=t-p.t0;
+      if(age<0||age>p.life){if(!p.hid){M.compose(V.set(0,-999,0),Q,Sv.set(0,0,0));o.steam.setMatrixAt(k,M);p.hid=true;}continue;}
+      p.hid=false;const u=age/p.life,sc=p.s0*(1+u*(p.big?3.2:2.2))*(u>0.75?1-(u-0.75)/0.25*0.6:1);
+      M.compose(V.set(p.x+p.vx*age+2.2*age,p.y+p.vy*age*(1-0.3*u),p.z+p.vz*age+0.8*age),Q,Sv.set(sc,sc*0.85,sc));o.steam.setMatrixAt(k,M);
+      o.steam.setColorAt(k,cc.copy(DK).lerp(SKY,Math.min(1,Math.pow(u,0.7)*1.05)));}   // dark ash near the vent, thinning to sky colour as it rises
+    o.steam.instanceMatrix.needsUpdate=true;if(o.steam.instanceColor)o.steam.instanceColor.needsUpdate=true;
     if(on){for(let k=0;k<o.blobN;k++){const life=1.4,u=((t+k*life/o.blobN)%life),ang=k*2.1,sp=2+(k%5)*1.1,vy=g.h*0.85+(k%7)*1.2,y=o.y+0.4+vy*u-4.9*u*u*2.2,sc=0.25+(k%3)*0.12;
         M.compose(V.set(o.x+Math.cos(ang)*sp*u,Math.max(o.y,y),o.z+Math.sin(ang)*sp*u),Q,Sv.set(sc,sc,sc));o.blobs.setMatrixAt(k,M);}o.blobs.instanceMatrix.needsUpdate=true;}}
+  for(const o of OBS.vines)if(o.pivot)o.pivot.rotation.z=vineAng(o,t);   // same angle as the physics
   for(const o of OBS.rocks){if(!o.mesh)continue;const b=rockAt(o,t);o.mesh.visible=!!b;if(!b)continue;
     o.mesh.position.set(b.x,b.y,b.z);o.mesh.rotation.set(b.tau*5,o.seed,b.tau*-7);
     if(b.n!==o.lastN){o.lastN=b.n;const lx=o.x+o.nx*o.d0,lz=o.z+o.nz*o.d0;if(player&&Math.abs(player.s-o.s)<130)thud(0.45*(1-Math.abs(player.s-o.s)/130));
@@ -3103,10 +3453,10 @@ function aiDrive(c,dt){
   const err=wrapA(Math.atan2(tx-c.x,tz-c.z)-c.psi);
   const tgt=clamp(err*2.6-c.r*0.18,-1,1);
   c.steerIn+=clamp(tgt-c.steerIn,-dt*5,dt*5);
-  let vAllow=99;const muA=1.05*ARC_GRIP*c.dsg.grip*0.86*c.skill,dec=7.2*c.skill;
+  let vAllow=99;const muA=1.05*ARC_GRIP*c.dsg.grip*0.86*c.skill*(TRACK.grip||1),dec=7.2*c.skill;
   const hz=Math.min(NS-1,i+Math.round((30+spd*3.2)/DSA));
   for(let k=i+1;k<=hz;k+=2){const sg=SURF_GRIP[SURF[k]],sm=SURF[k]>=2?1/(0.86*c.skill):1,vk=Math.sqrt(muA*sg*sm*G_/Math.max(Math.abs(KS[k]),0.0012*sg*sm));/* on snow/ice: the straight-line speed cap stays the same, and the AI uses all the grip there is (no safety margin) */const va=Math.sqrt(vk*vk+2*dec*(k-i)*DSA);if(va<vAllow)vAllow=va;}
-  c.brake=spd>vAllow+0.4?clamp((spd-vAllow)/3,0.2,1):0;
+  {const bt=spd>vAllow+0.4?clamp((spd-vAllow)/3,0.2,1):0;c.brakeS=lerp(c.brakeS||0,bt,1-Math.exp(-dt*(bt>(c.brakeS||0)?14:9)));c.brake=c.brakeS<0.03?0:c.brakeS;}   // brake pedal eased on and off, not stamped
   c.brake=Math.max(c.brake,guard);
   if(c.finished)c.brake=spd>1.5?1:0;
   c.handbrake=false;
@@ -3152,6 +3502,26 @@ function initAudio(){
     hum.connect(hl);hl.connect(hg);hg.connect(out);hum.start();
     const whine=AC.createOscillator();whine.type='triangle';whine.frequency.value=171;const wg=AC.createGain();wg.gain.value=0.04;whine.connect(wg);wg.connect(out);whine.start();
     snd.fan={out,pan,lfo,bp};
+    { // cobblestones (Aloma's rock fields): a 1 s loop of irregular stone knocks under the tyres, sped up with your speed
+      const sr=AC.sampleRate,len=sr,b=AC.createBuffer(1,len,sr),d=b.getChannelData(0);let tk=0;
+      // deep version: heavy thuds of the tyres dropping off one stone onto the next (55-120 Hz body, a dull 180-320 Hz knock),
+      // over a low rumble; hardly any hiss
+      while(tk<1){const i0=Math.floor(tk*sr),amp=0.45+Math.random()*0.55,f1=55+Math.random()*65,f2=180+Math.random()*140,dec=0.018+Math.random()*0.02;
+        for(let k=0;k<sr*0.12&&i0+k<len;k++){const tt=k/sr,e=Math.exp(-tt/dec);d[i0+k]+=amp*e*(0.8*Math.sin(2*Math.PI*f1*tt)+0.3*Math.sin(2*Math.PI*f2*tt)*Math.exp(-tt/0.008)+0.12*(Math.random()*2-1));}
+        tk+=0.03+Math.random()*0.04;}                       // ~20 thuds a second at 108 km/h
+      {let lo=0;for(let i=0;i<len;i++){lo+=((Math.random()*2-1)-lo)*0.02;d[i]+=lo*0.9;}}   // low road rumble under it
+      let pk=0;for(let i=0;i<len;i++)pk=Math.max(pk,Math.abs(d[i]));for(let i=0;i<len;i++)d[i]*=0.95/pk;
+      const src=AC.createBufferSource();src.buffer=b;src.loop=true;const lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.value=700;
+      const g=AC.createGain();g.gain.value=0;src.connect(lp);lp.connect(g);g.connect(master);src.start();snd.cobble={src,g};}
+    { // wooden planks (Mesozon's rope bridge and the tree-top deck): hollow clonks of each board, a loose rattle between them
+      const sr=AC.sampleRate,len=sr,b=AC.createBuffer(1,len,sr),d=b.getChannelData(0);let tk=0;
+      while(tk<1){const i0=Math.floor(tk*sr),amp=0.5+Math.random()*0.5,f1=95+Math.random()*50,f2=380+Math.random()*260,f3=900+Math.random()*500;
+        for(let k=0;k<sr*0.1&&i0+k<len;k++){const tt=k/sr;d[i0+k]+=amp*(0.7*Math.sin(2*Math.PI*f1*tt)*Math.exp(-tt/0.03)+0.45*Math.sin(2*Math.PI*f2*tt)*Math.exp(-tt/0.012)+0.15*Math.sin(2*Math.PI*f3*tt)*Math.exp(-tt/0.005)+0.1*(Math.random()*2-1)*Math.exp(-tt/0.004));}
+        tk+=0.04+Math.random()*0.02;}                       // ~20 boards a second at 108 km/h
+      let pk=0;for(let i=0;i<len;i++)pk=Math.max(pk,Math.abs(d[i]));for(let i=0;i<len;i++)d[i]*=0.95/pk;
+      const src=AC.createBufferSource();src.buffer=b;src.loop=true;const lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.value=2200;
+      const g=AC.createGain();g.gain.value=0;src.connect(lp);lp.connect(g);g.connect(master);src.start();snd.planks={src,g};}
+    snd.rain=loop('bandpass',2400,0.35);   // steady rain hiss (Mesozon)
   }
   // tyre squeal on tarmac: your recorded samples (cleaned, levelled). A seamless loop for held slides,
   // plus three one-shot chirps that fire when a slide starts.
@@ -3195,6 +3565,11 @@ function updateAudio(){
     if(snd.fan.pan&&v>0){const e=camera.matrixWorld.elements,cx=bx-camera.position.x,cz=bz-camera.position.z;snd.fan.pan.pan.setTargetAtTime(clamp((cx*e[0]+cz*e[2])/(Math.hypot(cx,cz)+6),-1,1)*0.7,t,0.1);}
     snd.fan.bp.frequency.setTargetAtTime(420+160/(1+best/20),t,0.2);   // brighter up close
   }
+  if(snd.planks){const on=racing&&ground&&c.onRoad&&spd>2&&(VOID[c.idx]||(TRACK.env==='jungle'&&S[c.idx]-S0<14));   // rumbling over the bridge planks
+    snd.planks.g.gain.setTargetAtTime(on?0.22+Math.min(1,spd/40)*0.4:0,t,on?0.05:0.12);snd.planks.src.playbackRate.setTargetAtTime(clamp(0.55+spd/70,0.6,1.5),t,0.1);}
+  if(snd.rain)snd.rain.g.gain.setTargetAtTime(TRACK&&TRACK.rain&&state!=='menu'&&!paused?0.09:0,t,0.4);
+  if(snd.cobble){const on=racing&&ground&&ROCKY[c.idx]&&c.onRoad&&spd>2;   // rattling over Aloma's volcanic cobbles
+    snd.cobble.g.gain.setTargetAtTime(on?0.25+Math.min(1,spd/40)*0.45:0,t,on?0.05:0.12);snd.cobble.src.playbackRate.setTargetAtTime(clamp(0.6+spd/90,0.65,1.25),t,0.1);   /* pitch stays low even flat out */}
   snd.wind.g.gain.setTargetAtTime(Math.min(0.05,Math.pow(spd/55,1.6)*0.06)*(1-0.3*(c?Math.min(1,c.draft*1.5):0)),t,0.2);   // soft wind rush, 30% quieter in a slipstream
   snd.wind.f.frequency.setTargetAtTime(220+spd*5,t,0.2);
   const sk=racing&&c.onRoad&&!c.onDirt&&!c.onSnow&&ground?Math.min(1,c.slip):0;   // no tyre squeal on dirt
@@ -3353,6 +3728,7 @@ function updateCarVisual(c,dt){
   if(state==='race'&&c.grounded&&spd>3){
     const sp=Math.sin(c.psi),cp=Math.cos(c.psi),sandy=TRACK.env==='canyon';
     if(!c.onRoad&&Math.random()<dt*spd*0.8)emit(c.x-sp*1.4+(Math.random()-0.5)*1.6,c.y+0.2,c.z-cp*1.4,-c.vx*0.1,1+Math.random(),-c.vz*0.1,0.4+Math.random()*0.3,0.7,TRACK.env==='snow'?0xffffff:sandy?(Math.random()<0.5?0xd9ab76:0xc9955f):Math.random()<0.5?0x8fb456:0xb9a577);
+    if(TRACK.rain&&c.onRoad&&spd>12&&Math.random()<dt*spd*0.22&&Math.hypot(c.x-camera.position.x,c.z-camera.position.z)<70)for(const s2 of [1,-1])emit(c.x-sp*1.6+cp*s2*0.8,c.y+0.25,c.z-cp*1.6-sp*s2*0.8,-c.vx*0.12+(Math.random()-0.5),0.9+Math.random()*0.8,-c.vz*0.12+(Math.random()-0.5),0.32+Math.random()*0.25,0.45,0xd9e3e4);   // spray off wet tyres
     if(c.onDirt&&spd>8&&Math.random()<dt*spd*(0.3+c.slip))emit(c.x-sp*1.5+(Math.random()-0.5)*1.8,c.y+0.25,c.z-cp*1.5,-c.vx*0.08+(Math.random()-0.5),0.8+Math.random(),-c.vz*0.08+(Math.random()-0.5),0.5+Math.random()*0.4,0.8,Math.random()<0.5?0xc9a27a:0xb58a60);   // dust trail
     if((c.surf===2||(!c.onRoad&&TRACK.env==='snow'))&&spd>8&&Math.random()<dt*spd*(0.35+c.slip))emit(c.x-sp*1.5+(Math.random()-0.5)*1.8,c.y+0.3,c.z-cp*1.5,-c.vx*0.1+(Math.random()-0.5),1+Math.random()*1.4,-c.vz*0.1+(Math.random()-0.5),0.45+Math.random()*0.35,0.7,Math.random()<0.5?0xffffff:0xe4eef8);   // snow spray
     if(c.onRoad&&!c.onDirt&&!c.onSnow&&c.slip>0.25&&Math.random()<dt*28*Math.min(1,c.slip))for(const s of [1,-1])emit(c.x-sp*1.05+cp*s*0.8,c.y+0.2,c.z-cp*1.05-sp*s*0.8,(Math.random()-0.5)*1.5,0.6+Math.random(),(Math.random()-0.5)*1.5,0.4+Math.random()*0.3,0.9,0xe8e8e8);
@@ -3519,7 +3895,7 @@ const canReset=()=>state==='race'&&player&&!player.finished&&player.s>S0+START_A
 function manualReset(){if(!state||state!=='race'||!player||player.finished)return;
   if(player.s<=S0+START_ARCH){flash('No reset yet','Pass the START arch first','white');return;}
   const w=resetWait();if(w>0){flash('Reset recharging',Math.ceil(w)+' s','white');return;}
-  lastManualReset=raceT;respawn(player);}
+  lastManualReset=raceT;respawn(player,true);}
 $('resetBtn').onclick=manualReset;
 function setMute(m){muted=m;try{localStorage.setItem('phd-mute',m?'1':'0');}catch(e){}if(snd)snd.master.gain.value=m?0:0.7;$('sndWave').style.opacity=m?0.15:1;}
 $('sndBtn').onclick=()=>{initAudio();setMute(!muted);};
@@ -4035,7 +4411,7 @@ function tick(dt){
     }
     updateDraft(dt);
     const sub=Math.max(1,Math.ceil(dt/(1/240)));const h=dt/sub;
-    for(let s=0;s<sub;s++){for(const c of cars)if(!c.remote)stepCar(c,h);if(OBS){const ot=raceT-dt+(s+1)*h;for(const c of cars)if(!c.remote)obstacleHits(c,ot,h);}collide();}
+    for(let s=0;s<sub;s++){for(const c of cars)if(!c.remote)stepCar(c,h);if(OBS){const ot=raceT-dt+(s+1)*h;for(const c of cars)if(!c.remote)obstacleHits(c,ot,h);}collide(h);}
     for(const c of cars){
       if(c.remote)continue;
       if(!c.finished&&c.s>=FINISH_S){c.finished=true;c.finishTime=raceT;finishCount++;c.place=finishCount;if(c===player&&NET.inRace)netSend({t:'fin',time:raceT});
@@ -4058,6 +4434,7 @@ function tick(dt){
 function ambient(dt,now){
   if(world.snowGuns)updateSnowGuns(now);
   if(world.isl)updateIsland(now);
+  if(world.jun)updateJungle(now,dt);
   if(OBS&&state==='menu')updateObstacles(now/1000,dt);
   if(world.windmill)world.windmill.rotation.z+=dt*0.9;
   if(world.antTip)world.antTip.visible=(now%1600)<800;
