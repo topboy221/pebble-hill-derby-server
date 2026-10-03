@@ -4190,6 +4190,13 @@ function netResults(m){
 }
 /* ---- menus ---- */
 const TRK_NAME=id=>(TRACKS[id]||{name:id}).name;
+try{NET.mode=localStorage.getItem('phd-mpmode')==='survival'?'survival':'normal';}catch(e){NET.mode='normal';}
+function mpModes(){   // Race (12 cars) or Survival (50 cars): used by Quick join and Create private server
+  const g=document.createElement('div');g.className='modes';g.setAttribute('role','group');g.setAttribute('aria-label','Online mode');
+  for(const [m,t,sub] of [['normal','Race','12 cars · random grid'],['survival','Survival','50 cars · humans start at the back']]){
+    const b=document.createElement('button');b.className='btn';b.textContent=t;const sm=document.createElement('small');sm.textContent=sub;b.appendChild(sm);
+    b.setAttribute('aria-pressed',String(NET.mode===m));b.onclick=()=>{NET.mode=m;try{localStorage.setItem('phd-mpmode',m);}catch(e){}mpRender();};g.appendChild(b);}
+  return g;}
 function mpBtn(label,small,cls,fn){const b=document.createElement('button');b.className='btn mmb'+(cls?' '+cls:'');b.textContent=label;if(small){const s=document.createElement('small');s.textContent=small;b.appendChild(s);}b.onclick=fn;return b;}
 function mpForm(title,fields,submit,fn,back){
   const f=document.createElement('div');f.className='card mpform';const h=document.createElement('h3');h.className='disp';h.textContent=title;f.appendChild(h);
@@ -4218,7 +4225,7 @@ function mpRender(){
     return;
   }
   $('mpSrvBox').open=false;NET.waking=false;
-  st.textContent=NET.name?('Racing as '+NET.name+(NET.guest?' (guest)':'')+' · up to 12 per race'):'Up to 12 racers per race. Play as a guest or use your account.';
+  st.textContent=NET.name?('Racing as '+NET.name+(NET.guest?' (guest)':'')+' · Race: 12 cars · Survival: 50 cars'):'Race with up to 12 or Survival with 50 cars. Play as a guest or use your account.';
   const v=NET.view;
   if(!NET.name||v==='auth'){
     if(v==='login'||v==='register'){P.appendChild(mpForm(v==='login'?'Log in':'Create account',[['name','Username','text','3–16 letters or numbers'],['pass','Password','password',v==='register'?'at least 6 characters':'']],v==='login'?'Log in':'Register',
@@ -4230,13 +4237,13 @@ function mpRender(){
     if(NET.err){const e=document.createElement('p');e.className='mperr';e.textContent=NET.err;P.appendChild(e);}
     return;
   }
-  if(v==='create'){P.appendChild(mpForm('Private server',[['sname','Server name','text',NET.name+'\'s server'],['spass','Password','password','friends need this to join']],'Create',
-    (I)=>{NET.leaving=false;return netSend({t:'create',name:I.sname.value.trim(),pass:I.spass.value,car:mySel()});},'hub'));$('mp_spass').autocomplete='new-password';return;}
+  if(v==='create'){P.appendChild(mpModes());P.appendChild(mpForm(NET.mode==='survival'?'Private server · Survival':'Private server · Race',[['sname','Server name','text',NET.name+'\'s server'],['spass','Password','password','friends need this to join']],'Create',
+    (I)=>{NET.leaving=false;return netSend({t:'create',name:I.sname.value.trim(),pass:I.spass.value,car:mySel(),mode:NET.mode});},'hub'));$('mp_spass').autocomplete='new-password';return;}
   if(v==='browse'){
     const c=document.createElement('div');c.className='card mpform';const h=document.createElement('h3');h.className='disp';h.textContent='Private servers';c.appendChild(h);
     const L=document.createElement('div');L.className='slist';
     if(!NET.list.length){const p=document.createElement('p');p.className='muted';p.textContent='No private servers right now. Create one and share the password.';L.appendChild(p);}
-    NET.list.forEach(sv=>{const b=document.createElement('button');b.className='btn srv';const n=document.createElement('b');n.textContent='🔒 '+sv.name;const i=document.createElement('span');i.textContent=sv.players+'/'+sv.max+(sv.state==='lobby'?'':' · racing');b.appendChild(n);b.appendChild(i);
+    NET.list.forEach(sv=>{const b=document.createElement('button');b.className='btn srv';const n=document.createElement('b');n.textContent='🔒 '+sv.name;const i=document.createElement('span');i.textContent=(sv.mode==='survival'?'Survival · ':'Race · ')+sv.players+'/'+sv.max+(sv.state==='lobby'?'':' · racing');b.appendChild(n);b.appendChild(i);
       b.setAttribute('aria-pressed',String(NET.joinId===sv.id));b.onclick=()=>{NET.joinId=sv.id;NET.err='';mpRender();};L.appendChild(b);});
     c.appendChild(L);
     if(NET.joinId){const lab=document.createElement('label');lab.textContent='Password for '+((NET.list.find(x=>x.id===NET.joinId)||{}).name||'server');const i=document.createElement('input');i.type='password';i.id='mp_jpass';i.dataset.submit='mpSubmit';i.autocomplete='off';lab.appendChild(i);c.appendChild(lab);setTimeout(()=>{if(!isTouch)i.focus();},30);}
@@ -4247,7 +4254,8 @@ function mpRender(){
     const bk=document.createElement('button');bk.className='btn';bk.textContent='Back';bk.onclick=()=>{NET.view='hub';NET.joinId=null;NET.err='';mpRender();};row.appendChild(bk);
     c.appendChild(row);P.appendChild(c);return;
   }
-  P.appendChild(mpBtn('Quick join','First open lobby, race starts when it fills or the timer runs out','go',()=>{NET.err='';NET.leaving=false;netSend({t:'quick',car:mySel()});}));
+  P.appendChild(mpModes());
+  P.appendChild(mpBtn('Quick join',NET.mode==='survival'?'Open Survival lobby: 50 cars, AI fills the empty slots':'Open lobby: race starts once players are ready','go',()=>{NET.err='';NET.leaving=false;netSend({t:'quick',car:mySel(),mode:NET.mode});}));
   P.appendChild(mpBtn('Create private server','Password protected, for you and your friends','',()=>{NET.view='create';NET.err='';mpRender();}));
   P.appendChild(mpBtn('Join private server','Pick a server and enter its password','',()=>{NET.view='browse';NET.joinId=null;NET.err='';netSend({t:'list'});mpRender();}));
   const row=document.createElement('div');row.className='mpsmall';
@@ -4273,14 +4281,14 @@ $('mpServer').dataset.submit='mpConnect';
 function lobbyRender(){
   const L=NET.lobby;if(!L)return;
   $('lobbyName').textContent=L.name;
-  $('lobbyInfo').textContent=(L.locked?'Private server':'Quick-join lobby')+' · code '+L.id+' · you are '+(NET.name||'')+(NET.guest?' (guest)':'');
+  $('lobbyInfo').textContent=(L.locked?'Private server':'Quick-join lobby')+(L.mode==='survival'?' · Survival (50 cars)':' · Race (12 cars)')+' · code '+L.id+' · you are '+(NET.name||'')+(NET.guest?' (guest)':'');
   const host=L.host===NET.you;
   {const me=L.players.find(p=>p.id===NET.you),r=!!(me&&me.ready),b=$('lobbyReady');b.setAttribute('aria-pressed',String(r));b.textContent=r?'Ready ✓':'Ready';
     b.title=r?'Tap to cancel':'Tap when you\'re ready to race';}
   const bl=L.bots&&L.botList||[];
   const nr=L.players.filter(p=>p.ready).length;
   $('lobbyCount').textContent='Racers '+L.players.length+'/'+L.max+(bl.length?' · +'+bl.length+' AI':'')+' · '+nr+' ready';
-  {const b=$('lobbyBots');b.setAttribute('aria-pressed',String(!!L.bots));b.textContent='AI cars: '+(L.bots?'on':'off');b.disabled=!host;b.title=host?'Fill empty grid slots with AI cars':'Only the host can change this';}
+  {const b=$('lobbyBots');b.setAttribute('aria-pressed',String(!!L.bots));b.textContent='AI cars: '+(L.bots?'on':'off');b.disabled=!host||L.mode==='survival';b.title=L.mode==='survival'?'Survival is always 50 cars: AI fills every free slot':host?'Fill empty grid slots with AI cars':'Only the host can change this';}
   const ol=$('lobbyPlayers');ol.innerHTML='';
   L.players.forEach(p=>{const li=document.createElement('li');if(p.id===NET.you)li.className='me';
     const d=document.createElement('span');d.className='dot';d.style.background=p.car&&p.car.paint||'#ccc';li.appendChild(d);
@@ -4330,7 +4338,7 @@ function netDropRace(msg){
 }
 /* ---- racing ---- */
 function netRace(m){
-  NET.outMsg=null;NET.botHost=m.botHost!=null?m.botHost:null;NET.results=null;NET.vote=null;NET.voted=null;NET.myVote=null;NET.inRace=false;NET.online=true;NET.you=m.you;resultsShown=false;
+  NET.outMsg=null;NET.botHost=m.botHost!=null?m.botHost:null;NET.raceMode=m.mode==='survival'?'survival':'normal';NET.results=null;NET.vote=null;NET.voted=null;NET.myVote=null;NET.inRace=false;NET.online=true;NET.you=m.you;resultsShown=false;
   $('results').hidden=true;$('pause').hidden=true;
   for(const k of MENUS)$(k).hidden=true;$('menubg').hidden=true;
   initAudio();
@@ -4348,7 +4356,7 @@ function netPrewarm(){
   }catch(e){console.error(e);}
 }
 function setupOnlineCars(roster){
-  raceMode='normal';
+  raceMode=NET.raceMode||'normal';
   for(const c of cars){scene.remove(c.mesh.root);scene.remove(c.mesh.shadow);dropTag(c);}
   cars.length=0;player=null;
   for(const r of roster){
@@ -4367,7 +4375,7 @@ function netGo(m){
   NET.startLocal=m.startAt&&off!=null?m.startAt-off:now+m.countdown*1000;   // the shared GO moment, on this device's clock
   startRace();
   countT=(NET.startLocal-now)/1000;lastCount=Math.ceil(countT)+1;
-  raceLabel='Online · '+TRACK.name;flash(TRACK.name,'Online race · '+cars.length+' racers');
+  raceLabel=(raceMode==='survival'?'Online Survival · ':'Online · ')+TRACK.name;flash(TRACK.name,(raceMode==='survival'?'Online Survival · ':'Online race · ')+cars.length+' cars');
 }
 const r2=v=>Math.round(v*100)/100;
 function netTick(dt){
@@ -4375,7 +4383,7 @@ function netTick(dt){
   NET.sendT-=dt;if(NET.sendT>0||!player)return;NET.sendT=1/20;
   const c=player,f=(c.grounded?1:0)|(c.onRoad?2:0)|(c.handbrake?4:0)|(c.brake>0?8:0)|(c.boostT>0?16:0)|(c.finished?32:0)|(c.ghostT>0?64:0);
   netSend({t:'st',s:netState(c)});
-  if(NET.botHost!=null&&NET.botHost===NET.you){const L=[];for(const b of cars)if(b.bot&&!b.remote)L.push([b.netId].concat(netState(b)));if(L.length)netSend({t:'bst',s:L});}   // the AI drivers we host, to everyone
+  NET.bstN=(NET.bstN||0)+1;if(NET.botHost!=null&&NET.botHost===NET.you&&(raceMode!=='survival'||NET.bstN%2===0)){const L=[];for(const b of cars)if(b.bot&&!b.remote)L.push([b.netId].concat(netState(b)));if(L.length)netSend({t:'bst',s:L});}   // the AI drivers we host, to everyone
 }
 function netState(c){const f=(c.grounded?1:0)|(c.onRoad?2:0)|(c.handbrake?4:0)|(c.brake>0?8:0)|(c.boostT>0?16:0)|(c.finished?32:0)|(c.ghostT>0?64:0);
   return [r2(c.x),r2(c.y),r2(c.z),Math.round(c.psi*1000)/1000,r2(c.vx),r2(c.vy),r2(c.vz),r2(c.s),Math.round(c.delta*1000)/1000,f,r2(c.slip||0),r2(c.r),r2(raceT),Math.round(NET.rtt||100)];}
