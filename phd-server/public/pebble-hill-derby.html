@@ -405,7 +405,7 @@ if(!window.THREE){ $('loadMsg').textContent='The 3D engine could not load. Check
    relaxation (force builds up progressively), balance from each car's real weight split, brake bias, ballistic jumps.
    Arcade (~40%): real gravity (no slope boost), +20% tyre grip, steering limited to what the front tyres can use, soft anti-spin,
    handbrake drift → boost, push start, a little air control, soft catch-up for rivals.            */
-const DRAFT_MAX=0.38,DRAFT_MIN_V=80/3.6,DRAFT_LEN=22;   // slipstream: up to 38% less air drag (≈27% at 8 m) right behind a car, above 80 km/h
+const DRAFT_MAX=0.76,DRAFT_MIN_V=80/3.6,DRAFT_LEN=44;   // slipstream: up to 76% less air drag (≈66% at 8 m) right behind a car, felt up to 44 m back, above 80 km/h
 const G_=9.81,RHO=1.2,ARC_GRIP=1.2,SLOPE_ASSIST=1.0,DOWNFORCE=0.15,V_REF=47,LW=2.55,HCG=0.38,RELAX=1.0;
 const PAC_C=1.15,PAC_T=Math.tan(Math.PI/(2*PAC_C)),APK_F=0.12,APK_R=0.11,REAR_GRIP=1.05,BF=PAC_T/APK_F,BR=PAC_T/APK_R;
 const pac=(a,D,B)=>D*Math.sin(PAC_C*Math.atan(B*a));
@@ -3032,7 +3032,7 @@ function resetRace(){
   lastManualReset=-99;finishCount=0;raceT=0;countT=3.6;afterFinishT=0;resultsShown=false;finalShown=false;
   cars.forEach((c,k)=>{
     Object.assign(c,{side:Math.random()<0.5?-1:1,ghostT:0,ghostNet:false,out:false,outT:0,ejectT:null,obsCD:{},finished:false,finishTime:0,place:0,pushes:0,pushTimer:0.3+Math.random()*0.2,driftCharge:0,boostT:0,airT:0,stuckT:0,brake:0,handbrake:false,pitch:0,roll:0,bounce:0,bounceV:0,assist:0,ax:0,fyf:0,fyr:0,draft:0,tow:null,towCD:2+Math.random()*4,passT:0,lane:c.baseLane});
-    const ps=playerSlot(),slot=c.slot!=null?c.slot:c===player?ps:(k<ps?k:k+1);placeOnTrack(c,S0+GRID[slot][0],GRID[slot][1]*HALFW/6,0);if(c.remote){c.net=null;c.oldNet=null;c.ex=undefined;c.buf=[];c.kvx=c.kvz=c.kox=c.koz=c.kop=c.kr=0;c.pj=undefined;c.fx=undefined;c.gotHitT=c.hitDoneT=c.kickT=null;c.pendHit=null;}
+    const ps=playerSlot(),slot=c.slot!=null?c.slot:c===player?ps:(k<ps?k:k+1);placeOnTrack(c,S0+GRID[slot][0],GRID[slot][1]*HALFW/6,0);if(c.remote){c.net=null;c.oldNet=null;c.ex=undefined;c.buf=[];c.kvx=c.kvz=c.kox=c.koz=c.kop=c.kr=0;c.pj=undefined;c.fx=undefined;c.gotHitT=c.hitDoneT=c.kickT=null;c.pendHit=null;c.dr=null;c.drT=null;c.lagUntil=null;c.lagGhost=false;c.lagHide=false;}
   });
   world.gateArm.rotation.z=0;gateOpen=0;
   state='countdown';lastCount=4;
@@ -3251,7 +3251,7 @@ function updateDraft(dt){
         const fx=Math.sin(L.psi),fz=Math.cos(L.psi),dx=F.x-L.x,dz=F.z-L.z;
         const behind=-(dx*fx+dz*fz),side=Math.abs(dx*fz-dz*fx);
         if(behind<2.5||behind>DRAFT_LEN||Math.abs(wrapA(F.psi-L.psi))>0.35)continue;
-        const wake=1.3+behind*0.03;if(side>wake)continue;
+        const wake=1.3+behind*0.015;if(side>wake)continue;
         const k=(1-(behind-2.5)/(DRAFT_LEN-2.5))*Math.sqrt(1-side/wake);
         if(k>best)best=k;
       }
@@ -3268,7 +3268,7 @@ function tryPush(c){
   return true;
 }
 const GHOST_SECS=3;
-const isGhost=c=>c.ghostT>0||!!c.ghostNet;
+const isGhost=c=>c.ghostT>0||!!c.ghostNet||!!c.lagGhost;
 const RESET_MANUAL_V=36/3.6,RESET_AUTO_V=70/3.6;   // you pressed reset: 36 km/h; the game put you back (knocked out, stuck, lost): 70 km/h
 function respawn(c,manual){
   const byRock=!manual&&c.rockT!=null&&raceT-c.rockT<6;   // knocked out by an Aloma lava boulder: back on where you were hit (still on the lava)
@@ -3512,12 +3512,12 @@ function aiDrive(c,dt){
     const straight=mk<1/250;
     if(c.tow){
       const L=c.tow.t,gap=L.s-c.s;c.tow.time+=dt;
-      if(!straight||gap<5.5||gap>32||c.tow.time>c.tow.max||L.finished||spd<DRAFT_MIN_V*0.9){
+      if(!straight||gap<5.5||gap>60||c.tow.time>c.tow.max||L.finished||spd<DRAFT_MIN_V*0.9){
         const side=rd(L)>0.5?-1:rd(L)<-0.5?1:(Math.random()<0.5?-1:1);                // pull out towards the side with more room
         c.passLane=clamp(rd(L)+side*3.0,-4.4*LW,4.4*LW);c.passT=gap<14?3.5:0;c.tow=null;c.towCD=4+Math.random()*6;
       }
     }else if(c.towCD<=0&&straight&&spd>DRAFT_MIN_V){
-      let L=null,bg=1e9;for(const o of cars){if(o===c)continue;const gap=o.s-c.s;if(gap>7&&gap<30&&Math.abs(rd(o)-rd(c))<4.5&&gap<bg){L=o;bg=gap;}}
+      let L=null,bg=1e9;for(const o of cars){if(o===c)continue;const gap=o.s-c.s;if(gap>7&&gap<56&&Math.abs(rd(o)-rd(c))<4.5&&gap<bg){L=o;bg=gap;}}
       // never join a queue: skip cars that are already towing or already being towed
       if(L&&!L.tow&&!cars.some(o=>o.tow&&o.tow.t===L)&&Math.random()<c.draftLove*dt*1.5){c.tow={t:L,time:0,max:2+Math.random()*3.5};c.towOff=(Math.random()-0.5)*0.6;}
     }
@@ -3786,7 +3786,7 @@ function updateLod(){
     setLod(c,d2>(l===2?470:490)**2?2:d2>(l===0?R+2:R-4)**2?1:0);}
   // phantom cars flicker (on 70% of the time, 8 times a second)
   const on=(performance.now()%125)<88;
-  for(const c of cars){const M=c.mesh;if(!M)continue;const g=isGhost(c)&&state==='race';if(g||M.ghostVis){M.root.visible=M.lod<2&&(!g||on);M.shadow.visible=M.lod<2&&!g;M.ghostVis=g;}}
+  for(const c of cars){const M=c.mesh;if(!M)continue;const g=isGhost(c)&&state==='race';if(g||M.ghostVis){M.root.visible=M.lod<2&&(!g||on)&&!c.lagHide;M.shadow.visible=M.lod<2&&!g;M.ghostVis=g;}}
 }
 function updateCarVisual(c,dt){
   const M=c.mesh,spd=Math.hypot(c.vx,c.vz);
@@ -4092,10 +4092,10 @@ function netMsg(m){
       if(m.lobby.state==='lobby')NET.info='';
       if(first||(!NET.inRace&&!NET.results&&menuScreen!=='lobby'&&state==='menu'))showScreen('lobby');
       lobbyRender();break;}
-    case 'race':case 'go':case 'snap':case 'fin':case 'gone':case 'results':case 'votes':case 'voted':case 'hit':
+    case 'race':case 'go':case 'snap':case 'fin':case 'gone':case 'out':case 'results':case 'votes':case 'voted':case 'hit':
       // race traffic only counts while we're in a lobby: a message already on its way when you left is ignored
       if(!NET.lobby||NET.leaving)break;
-      if(m.t==='hit')netHit(m);else if(m.t==='race')netRace(m);else if(m.t==='go')netGo(m);else if(m.t==='snap')netSnap(m);else if(m.t==='fin')netFin(m);else if(m.t==='gone')netGone(m.id);else netResults(m);
+      if(m.t==='hit')netHit(m);else if(m.t==='race')netRace(m);else if(m.t==='go')netGo(m);else if(m.t==='snap')netSnap(m);else if(m.t==='fin')netFin(m);else if(m.t==='gone')netGone(m.id);else if(m.t==='out')netOut(m);else netResults(m);
       break;
   }
 }
@@ -4243,7 +4243,7 @@ function netDropRace(msg){
 }
 /* ---- racing ---- */
 function netRace(m){
-  NET.results=null;NET.vote=null;NET.voted=null;NET.myVote=null;NET.inRace=false;NET.online=true;NET.you=m.you;resultsShown=false;
+  NET.outMsg=null;NET.results=null;NET.vote=null;NET.voted=null;NET.myVote=null;NET.inRace=false;NET.online=true;NET.you=m.you;resultsShown=false;
   $('results').hidden=true;$('pause').hidden=true;
   for(const k of MENUS)$(k).hidden=true;$('menubg').hidden=true;
   initAudio();
@@ -4342,10 +4342,22 @@ function netRemotes(now,dt){
       x=hermite(a[0],a[4],e[0],e[4],h,u);z=hermite(a[2],a[6],e[2],e[6],h,u);y=hermite(a[1],a[5],e[1],e[5],h,u);
       vx=lerp(a[4],e[4],u);vz=lerp(a[6],e[6],u);vy=lerp(a[5],e[5],u);   // its reported speed (the curve's slope can spike between odd updates)
       psi=a[3]+wrapA(e[3]-a[3])*u;rr=lerp(a[11],e[11],u);
-    }else{ // nothing to blend between yet (a late update, a gap, or a respawn): carry the latest one on its way for up to 0.3 s
-      const S=(B&&rt>B.t)||!B?(B||A):A,e=S.s,t=clamp(rt-S.t,0,0.3);q=e;
-      x=e[0]+e[4]*t;z=e[2]+e[6]*t;y=e[1]+e[5]*t;vx=e[4];vz=e[6];vy=e[5];psi=e[3]+e[11]*t;rr=e[11];
+    }else{ // nothing to blend between yet (a late update, a lag spike, or a respawn): keep the car driving on down the road
+      const S=(B&&rt>B.t)||!B?(B||A):A,e=S.s;q=e;
+      if(c.drT!==S.t){c.drT=S.t;c.dr=null;   // where that update put it on the course: distance, offset from the centre line, speed along and across
+        const i0=nearest(e[0],e[2],30);if(i0>=0&&!(e[9]&32)){const o={x:e[0],z:e[2],idx:i0};locate(o);const k=o.idx,tx=TX[k],tz=TZ[k];
+          c.dr={s:o.s,d:o.d,u:Math.max(0,e[4]*tx+e[6]*tz),a:clamp(c.net&&c.net.acc||0,-4,4),w:e[4]*NX[k]+e[6]*NZ[k],pe:wrapA(e[3]-Math.atan2(tx,tz))};}}
+      const D=c.dr;
+      if(!D){const t=clamp(rt-S.t,0,0.3);x=e[0]+e[4]*t;z=e[2]+e[6]*t;y=e[1]+e[5]*t;vx=e[4];vz=e[6];vy=e[5];psi=e[3]+e[11]*t;rr=e[11];}   // finished, or off the course: as before
+      else{ // follow the road's own curve at its last speed (up to 4 s), drifting sideways less and less, never into the wall
+        const t=clamp(rt-S.t,0,4),tau=0.4,dd=D.w*tau*(1-Math.exp(-t/tau)),lim=Math.max(Math.abs(D.d),HALFW-1),d=clamp(D.d+dd,-lim,lim);
+        const ta=Math.min(t,1.5),ua=Math.max(0,D.u+D.a*ta),ds=D.u*ta+0.5*(ua-D.u)*ta+ua*(t-ta),fi=clamp((D.s+ds)/DSA,0,NS-1.001),i=Math.floor(fi),f=fi-i,L=A2=>A2[i]+(A2[i+1]-A2[i])*f;
+        const px=L(PX),pz=L(PZ),nx=L(NX),nz=L(NZ),tx=L(TX),tz=L(TZ),wv=D.w*Math.exp(-t/tau);
+        x=px+nx*d;z=pz+nz*d;y=e[1]+e[5]*t-4.9*t*t;vx=tx*ua+nx*wv;vz=tz*ua+nz*wv;vy=e[5]-9.8*t;psi=Math.atan2(tx,tz)+D.pe*Math.exp(-t/0.5);rr=0;}
     }
+    // a lag spike: while this car's updates are overdue it's a phantom (blinking, others drive straight through it),
+    // so a frozen or guessed car never blocks anyone; it stays one for half a second after its updates are back
+    {const stale=rt-b[b.length-1].t;if(stale>0.3&&!(q&&q[9]&32))c.lagUntil=rt+0.5;c.lagGhost=c.lagUntil!=null&&rt<c.lagUntil;c.lagHide=stale>4&&!(q&&q[9]&32);}   // silent for over 4 s: hidden until it reports in again (the server takes it out of the race at 10 s)
     // bring it forward to *now*: carry that smooth past position on along its own path for the playback delay.
     // The path it's on is already smooth, so this stays smooth, and both screens now agree where each car is.
     {const T=NET.noProject?0:NET.D,n=3,h=T/n,x0=x,z0=z,p0=psi,v0x=vx,v0z=vz;let px=x,pz=z,pvx=vx,pvz=vz,pp=psi;
@@ -4397,6 +4409,12 @@ function netFin(m){
   c.finished=true;c.finishTime=m.time;c.place=m.place;
   if(c!==player){finishCount=Math.max(finishCount,m.place);}
 }
+// the server took us out of the race (our game went quiet, e.g. we switched apps): we sit out until the next one
+function netOut(m){
+  if(!player||!(state==='race'||state==='countdown')||player.finished)return;
+  player.finished=true;player.finishTime=0;NET.outMsg=m.msg||'Taken out of the race for inactivity.';
+  resultsShown=true;netShowResults();
+}
 function netGone(id){
   const i=cars.findIndex(k=>k.netId===id);if(i<0||cars[i]===player)return;
   const c=cars[i];scene.remove(c.mesh.root);scene.remove(c.mesh.shadow);cars.splice(i,1);$('posOf').textContent='of '+cars.length;
@@ -4407,8 +4425,8 @@ function netShowResults(){
   $('againBtn').hidden=true;$('garageBtn').textContent='Leave lobby';
   if(!NET.results){ // we crossed the line: others are still racing
     const st=standings(),place=st.indexOf(player)+1;
-    $('resTitle').textContent=(player.finished&&player.finishTime?place+ord(place)+' place':'Race over');
-    $('resSub').textContent='Finish time '+fmt(player.finishTime)+' · waiting for the others to finish…';
+    $('resTitle').textContent=(player.finished&&player.finishTime?place+ord(place)+' place':NET.outMsg?'Out of the race':'Race over');
+    $('resSub').textContent=(NET.outMsg&&!player.finishTime?NET.outMsg:'Finish time '+fmt(player.finishTime))+' · waiting for the others to finish…';
     $('voteBox').hidden=true;renderTable();$('results').hidden=false;return;
   }
   const me=NET.results.find(r=>r.id===NET.you);
