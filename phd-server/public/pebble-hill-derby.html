@@ -121,8 +121,12 @@ input:focus{outline:3px solid var(--sky);outline-offset:1px}
 .plist li .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .plist li.me{background:#fff3c4;border-radius:6px}
 .plist li.open{color:#9aa3bd}
+.plist li.bot{color:#4a5170}.badge.ai{background:#d9ecff}
+.btn.tog[aria-pressed="true"]{background:var(--tomato);color:#fff}.btn.tog:disabled{opacity:.75;box-shadow:0 2px 0 var(--ink)}
 .badge{font-size:10px;font-weight:800;border:2px solid var(--ink);border-radius:6px;padding:0 4px;background:var(--mist);flex:none}
 .badge.host{background:var(--sun)}
+.badge.rdy{background:#3fae5a;color:#fff}
+#lobbyReady[aria-pressed="true"]{background:#3fae5a;color:#fff}
 .lrow{display:flex;gap:10px}
 .vrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
 .vrow .btn{display:flex;flex-direction:column;align-items:flex-start;text-align:left}
@@ -305,7 +309,7 @@ tr.me td{background:#fff3c4}
       <p class="tag" id="lobbyInfo"></p>
       <p class="tag" id="lobbyStatus"></p>
       <div class="vrow" id="lobbyVote" hidden></div>
-      <div class="lrow"><button class="btn go" id="lobbyStart" hidden>Start race</button><button class="btn" id="lobbyLeave">Leave</button></div>
+      <div class="lrow"><button class="btn go" id="lobbyReady" aria-pressed="false">Ready</button><button class="btn tog" id="lobbyBots" aria-pressed="false" title="Fill empty grid slots with AI cars">AI cars: off</button><button class="btn" id="lobbyLeave">Leave</button></div>
     </div>
     <div class="mm"><div class="card plist"><div class="glab" id="lobbyCount">Racers</div><ol id="lobbyPlayers"></ol></div></div>
   </div>
@@ -3265,7 +3269,7 @@ function collide(H){H=H||1/240;
       if(R&&NET.dbg)(NET.log=NET.log||[]).push('hit vn '+vn.toFixed(2)+' j '+Math.round(j)+' dv '+Math.round(j/ma*3.6)+'kmh A '+(ra?'remote':'me')+' vA '+Math.round(Math.hypot(A.vx,A.vz)*3.6)+' vB '+Math.round(Math.hypot(B.vx,B.vz)*3.6));
       if(R){const sg=R===A?-1:1,jx=sg*j*nx,jz=sg*j*nz,dr=R===A?dA:dB,m=R.dsg.mass;
         R.kvx=(R.kvx||0)+jx/m;R.kvz=(R.kvz||0)+jz/m;R.kr=clamp((R.kr||0)+dr,-1.2,1.2);R.kickT=raceT;R.hitDoneT=raceT;
-        const P=R.pendHit||(R.pendHit={jx:0,jz:0,r:0});P.jx+=jx;P.jz+=jz;P.r+=dr;}
+        const P=R.pendHit||(R.pendHit={jx:0,jz:0,r:0});P.jx+=jx;P.jz+=jz;P.r+=dr;P.by=(R===A?B:A).netId;}
       if(!cushOnly)A.hitT=B.hitT=0.8;
       if(-vn>1)collCount++;
       if((A===player||B===player)&&-vn>2&&raceT-(collide.thudT||-9)>0.3){collide.thudT=raceT;thud(Math.min(0.7,-vn/10));shake=Math.min(1,shake+0.15*hard);}   // one thud per bump, not one per physics step while the bumpers are pressed together
@@ -3577,7 +3581,7 @@ function aiDrive(c,dt){
   c.brake=Math.max(c.brake,guard);
   if(c.finished)c.brake=spd>1.5?1:0;
   c.handbrake=false;
-  c.assist=(c.ai&&!c.finished&&player)?clamp((player.s-c.s)/160,-1,1)*0.45:0;
+  c.assist=(c.ai&&!c.bot&&!c.finished&&player)?clamp((player.s-c.s)/160,-1,1)*0.45:0;
   if(c.ai&&GAPS.length&&GAPS.some(g=>g[0]-i>0&&(g[0]-i)*DSA<260)){c.assist=Math.max(c.assist,0.35);c.brake=Math.min(c.brake,KS[i]*KS[i]>1e-5?c.brake:0);}   // commit to a gap jump
   if(state==='race'&&raceT<2.6&&c.ai){c.pushTimer-=dt;if(c.pushTimer<=0){tryPush(c);c.pushTimer=0.22+Math.random()*0.1/c.skill;}}
 }
@@ -4159,7 +4163,7 @@ function netMsg(m){
     case 'info':NET.info=m.msg;lobbyRender();break;
     case 'lobby':{
       if(NET.leaving)break;
-      if(NET.results&&m.lobby.state==='lobby'&&m.lobby.countdown==null&&!NET.inRace){ // not enough racers for another round: back to the lobby
+      if(NET.results&&m.lobby.state==='lobby'&&!NET.inRace){ // vote's done: back to the lobby to ready up for the next race
         NET.results=null;NET.vote=null;$('results').hidden=true;resultsShown=false;NET.lobby=m.lobby;NET.you=m.you;NET.cdEnd=0;showScreen('lobby');lobbyRender();break;}
       const first=!NET.lobby;NET.lobby=m.lobby;NET.you=m.you;NET.cdEnd=m.lobby.countdown!=null?performance.now()+m.lobby.countdown*1000:0;
       if(m.lobby.state==='lobby')NET.info='';
@@ -4271,16 +4275,24 @@ function lobbyRender(){
   $('lobbyName').textContent=L.name;
   $('lobbyInfo').textContent=(L.locked?'Private server':'Quick-join lobby')+' · code '+L.id+' · you are '+(NET.name||'')+(NET.guest?' (guest)':'');
   const host=L.host===NET.you;
-  $('lobbyStart').hidden=!(L.locked&&host&&L.state==='lobby');
-  $('lobbyCount').textContent='Racers '+L.players.length+'/'+L.max;
+  {const me=L.players.find(p=>p.id===NET.you),r=!!(me&&me.ready),b=$('lobbyReady');b.setAttribute('aria-pressed',String(r));b.textContent=r?'Ready ✓':'Ready';
+    b.title=r?'Tap to cancel':'Tap when you\'re ready to race';}
+  const bl=L.bots&&L.botList||[];
+  const nr=L.players.filter(p=>p.ready).length;
+  $('lobbyCount').textContent='Racers '+L.players.length+'/'+L.max+(bl.length?' · +'+bl.length+' AI':'')+' · '+nr+' ready';
+  {const b=$('lobbyBots');b.setAttribute('aria-pressed',String(!!L.bots));b.textContent='AI cars: '+(L.bots?'on':'off');b.disabled=!host;b.title=host?'Fill empty grid slots with AI cars':'Only the host can change this';}
   const ol=$('lobbyPlayers');ol.innerHTML='';
   L.players.forEach(p=>{const li=document.createElement('li');if(p.id===NET.you)li.className='me';
     const d=document.createElement('span');d.className='dot';d.style.background=p.car&&p.car.paint||'#ccc';li.appendChild(d);
     const n=document.createElement('span');n.className='nm';n.textContent=p.name;li.appendChild(n);
     if(p.id===L.host){const b=document.createElement('span');b.className='badge host';b.textContent='host';li.appendChild(b);}
     if(p.guest){const b=document.createElement('span');b.className='badge';b.textContent='guest';li.appendChild(b);}
+    if(p.ready){const b=document.createElement('span');b.className='badge rdy';b.textContent='ready';li.appendChild(b);}
     ol.appendChild(li);});
-  for(let k=L.players.length;k<L.max;k++){const li=document.createElement('li');li.className='open';li.textContent='open slot';ol.appendChild(li);}
+  bl.forEach(b=>{const li=document.createElement('li');li.className='bot';   // AI drivers keep the free slots warm; a joining player bumps one off
+    const d=document.createElement('span');d.className='dot';d.style.background=/^#[0-9a-f]{6}$/i.test(b.paint||'')?b.paint:'#ccc';li.appendChild(d);
+    const n=document.createElement('span');n.className='nm';n.textContent=b.name;li.appendChild(n);const t=document.createElement('span');t.className='badge ai';t.textContent='AI';li.appendChild(t);ol.appendChild(li);});
+  for(let k=L.players.length+bl.length;k<L.max;k++){const li=document.createElement('li');li.className='open';li.textContent='open slot';ol.appendChild(li);}
   lobbyStatus();
 }
 function lobbyStatus(){
@@ -4289,8 +4301,9 @@ function lobbyStatus(){
   if(L.state==='lobby'){
     const next=L.track?' Next track: '+TRK_NAME(L.track)+'.':'';
     if(NET.cdEnd){const s=Math.max(0,Math.ceil((NET.cdEnd-performance.now())/1000));t=(NET.voted?'Next up: '+TRK_NAME(NET.voted)+'. ':'')+'Race starts in '+s+' s…'+(NET.voted?'':next);}
-    else if(L.locked)t=(L.host===NET.you?'Start the race whenever you\'re ready. Friends find this server under Join private server and type the password.':'Waiting for the host to start the race.')+next;
-    else t='Waiting for at least 2 racers…'+next;
+    else if(!L.locked&&!L.bots&&L.players.length<2)t='Waiting for at least 2 racers…'+next;
+    else{const n=L.players.length,nr=L.players.filter(p=>p.ready).length,need=Math.floor(n/2)+1;
+      t=(L.host===NET.you?'You\'re the host: press Ready to start the 15 s countdown'+(n>1?' (or it starts once '+need+' of '+n+' are ready)':'')+'.':'Press Ready. The 15 s countdown starts when the host or '+need+' of '+n+' players are ready ('+nr+' now).')+next;}
   }else if(L.state==='loading'||L.state==='race')t=NET.info||'Race in progress. You\'ll be on the grid for the next one.';
   else if(L.state==='results'){
     if(NET.vote&&!NET.inRace&&!resultsShown){const V=NET.vote;const s=Math.max(0,Math.ceil((NET.voteEnd-performance.now())/1000));
@@ -4300,7 +4313,8 @@ function lobbyStatus(){
   $('lobbyStatus').textContent=t;
 }
 setInterval(()=>{if(state==='menu'&&menuScreen==='lobby')lobbyStatus();else if(resultsShown&&NET.vote&&!NET.voted)netRenderVote();},250);
-$('lobbyStart').onclick=()=>netSend({t:'start'});
+$('lobbyReady').onclick=()=>{const L=NET.lobby;if(!L)return;const me=L.players.find(p=>p.id===NET.you);netSend({t:'ready',on:!(me&&me.ready)});};
+$('lobbyBots').onclick=()=>{const L=NET.lobby;if(!L||L.host!==NET.you)return;netSend({t:'bots',on:!L.bots});};
 $('lobbyLeave').onclick=()=>netLeave();
 $('lobbyBack').onclick=()=>netLeave();
 function netLeave(){
@@ -4316,7 +4330,7 @@ function netDropRace(msg){
 }
 /* ---- racing ---- */
 function netRace(m){
-  NET.outMsg=null;NET.results=null;NET.vote=null;NET.voted=null;NET.myVote=null;NET.inRace=false;NET.online=true;NET.you=m.you;resultsShown=false;
+  NET.outMsg=null;NET.botHost=m.botHost!=null?m.botHost:null;NET.results=null;NET.vote=null;NET.voted=null;NET.myVote=null;NET.inRace=false;NET.online=true;NET.you=m.you;resultsShown=false;
   $('results').hidden=true;$('pause').hidden=true;
   for(const k of MENUS)$(k).hidden=true;$('menubg').hidden=true;
   initAudio();
@@ -4338,9 +4352,10 @@ function setupOnlineCars(roster){
   for(const c of cars){scene.remove(c.mesh.root);scene.remove(c.mesh.shadow);dropTag(c);}
   cars.length=0;player=null;
   for(const r of roster){
-    const me=r.id===NET.you,cs=me?mySel():r.car||{};
-    const d=DESIGNS[cs.design]?cs.design:0,paint=/^#[0-9a-f]{6}$/i.test(cs.paint)?cs.paint:PAINTS[0];
-    const c=newCar({net:null,ex:undefined,name:me?'You':r.name,num:r.slot+1,design:d,dsg:DESIGNS[d],paint,rim:RIMS[cs.rim]?cs.rim:0,fin:RIM_FINS[cs.fin]?cs.fin:0,ai:false,remote:!me,netId:r.id,slot:r.slot,buf:[]});
+    const me=r.id===NET.you,cs=me?mySel():r.car||{},mine=!!r.bot&&NET.botHost===NET.you;   // AI drivers: our game drives them if we host them
+    const d=DESIGNS[cs.design]?cs.design:0,paint=/^#[0-9a-f]{6}$/i.test(cs.paint)?cs.paint:PAINTS[0],rr=Math.random;
+    const c=newCar(Object.assign({net:null,ex:undefined,name:me?'You':r.name,num:r.slot+1,design:d,dsg:DESIGNS[d],paint,rim:RIMS[cs.rim]?cs.rim:0,fin:RIM_FINS[cs.fin]?cs.fin:0,ai:mine,remote:!me&&!mine,netId:r.id,slot:r.slot,buf:[],bot:!!r.bot},
+      mine?{skill:0.84+rr()*0.1,baseLane:(rr()-0.5)*5.2,draftLove:0.3+rr()*0.7}:{}));
     cars.push(c);if(me)player=c;
   }
   for(const c of cars){c.mesh=buildCar(c.design,c.paint,c.num,c.rim,c.fin);c.box=carGeos(c.design).box;scene.add(c.mesh.root);scene.add(c.mesh.shadow);addNightLights(c);}
@@ -4356,11 +4371,14 @@ function netGo(m){
 }
 const r2=v=>Math.round(v*100)/100;
 function netTick(dt){
-  for(const c of cars)if(c.remote&&c.pendHit){const P=c.pendHit;c.pendHit=null;netSend({t:'hit',to:c.netId,j:[Math.round(P.jx),Math.round(P.jz)],r:Math.round(P.r*1000)/1000});}
+  for(const c of cars)if(c.remote&&c.pendHit){const P=c.pendHit;c.pendHit=null;const h={t:'hit',to:c.netId,j:[Math.round(P.jx),Math.round(P.jz)],r:Math.round(P.r*1000)/1000};if(P.by!=null&&P.by<0)h.as=P.by;netSend(h);}
   NET.sendT-=dt;if(NET.sendT>0||!player)return;NET.sendT=1/20;
   const c=player,f=(c.grounded?1:0)|(c.onRoad?2:0)|(c.handbrake?4:0)|(c.brake>0?8:0)|(c.boostT>0?16:0)|(c.finished?32:0)|(c.ghostT>0?64:0);
-  netSend({t:'st',s:[r2(c.x),r2(c.y),r2(c.z),Math.round(c.psi*1000)/1000,r2(c.vx),r2(c.vy),r2(c.vz),r2(c.s),Math.round(c.delta*1000)/1000,f,r2(c.slip||0),r2(c.r),r2(raceT),Math.round(NET.rtt||100)]});
+  netSend({t:'st',s:netState(c)});
+  if(NET.botHost!=null&&NET.botHost===NET.you){const L=[];for(const b of cars)if(b.bot&&!b.remote)L.push([b.netId].concat(netState(b)));if(L.length)netSend({t:'bst',s:L});}   // the AI drivers we host, to everyone
 }
+function netState(c){const f=(c.grounded?1:0)|(c.onRoad?2:0)|(c.handbrake?4:0)|(c.brake>0?8:0)|(c.boostT>0?16:0)|(c.finished?32:0)|(c.ghostT>0?64:0);
+  return [r2(c.x),r2(c.y),r2(c.z),Math.round(c.psi*1000)/1000,r2(c.vx),r2(c.vy),r2(c.vz),r2(c.s),Math.round(c.delta*1000)/1000,f,r2(c.slip||0),r2(c.r),r2(raceT),Math.round(NET.rtt||100)];}
 function netSnap(m){
   NET.snapN=(NET.snapN||0)+1;
   if(!NET.inRace&&!NET.results)return;const now=performance.now();
@@ -4472,10 +4490,11 @@ function netHit(m){
   if(!NET.inRace||!player||state!=='race')return;
   const from=cars.find(k=>k.netId===m.from);if(!from)return;
   if(from.hitDoneT!=null&&raceT-from.hitDoneT<0.5)return;           // we already resolved this same bump on our side
-  const mass=player.dsg.mass,jx=clamp(+m.j[0]||0,-30000,30000),jz=clamp(+m.j[1]||0,-30000,30000);
+  const T=m.bot!=null?cars.find(k=>k.netId===m.bot&&k.bot&&!k.remote):player;if(!T)return;   // one of the AI cars we drive, or us
+  const mass=T.dsg.mass,jx=clamp(+m.j[0]||0,-30000,30000),jz=clamp(+m.j[1]||0,-30000,30000);
   if(NET.dbg)(NET.log=NET.log||[]).push('got hit '+Math.round(Math.hypot(jx,jz)/mass*3.6)+'kmh');
-  player.vx+=jx/mass;player.vz+=jz/mass;player.r=clamp(player.r+clamp(+m.r||0,-0.35,0.35),-3,3);player.hitT=0.8;from.gotHitT=raceT;
-  const v=Math.hypot(jx,jz)/mass;if(v>1){thud(Math.min(0.7,v/5));shake=Math.min(1,shake+0.15);}
+  T.vx+=jx/mass;T.vz+=jz/mass;T.r=clamp(T.r+clamp(+m.r||0,-0.35,0.35),-3,3);T.hitT=0.8;from.gotHitT=raceT;
+  const v=Math.hypot(jx,jz)/mass;if(v>1&&T===player){thud(Math.min(0.7,v/5));shake=Math.min(1,shake+0.15);}
 }
 function netFin(m){
   const c=cars.find(k=>k.netId===m.id);if(!c)return;
@@ -4516,7 +4535,7 @@ function netRenderResults(){
   rows.forEach((r,i)=>{const tr=document.createElement('tr');if(r.id===NET.you)tr.className='me';
     const paint=/^#[0-9a-f]{6}$/i.test(r.paint||'')?r.paint:'#ccc';
     tr.innerHTML='<td class="n">'+r.place+'</td><td><span class="dot" style="background:'+paint+'"></span><span class="nm"></span></td><td class="t">'+(r.time?(i===0?fmt(r.time):'+'+(r.time-lead).toFixed(2)+' s'):'DNF')+'</td>';
-    tr.querySelector('.nm').textContent=r.name+(r.guest?' (guest)':'');$('resTable').appendChild(tr);});
+    tr.querySelector('.nm').textContent=r.name+(r.bot?' (AI)':r.guest?' (guest)':'');$('resTable').appendChild(tr);});
 }
 function netRenderVote(){
   const lv=$('lobbyVote'),inLobby=state==='menu'&&menuScreen==='lobby';
@@ -4592,7 +4611,7 @@ function tick(dt){
     for(let s=0;s<sub;s++){for(const c of cars)if(!c.remote)stepCar(c,h);if(OBS){const ot=raceT-dt+(s+1)*h;for(const c of cars)if(!c.remote)obstacleHits(c,ot,h);}collide(h);}
     for(const c of cars){
       if(c.remote)continue;
-      if(!c.finished&&c.s>=FINISH_S){c.finished=true;c.finishTime=raceT;finishCount++;c.place=finishCount;if(c===player&&NET.inRace)netSend({t:'fin',time:raceT});
+      if(!c.finished&&c.s>=FINISH_S){c.finished=true;c.finishTime=raceT;finishCount++;c.place=finishCount;if(c===player&&NET.inRace)netSend({t:'fin',time:raceT});else if(c.bot&&NET.inRace)netSend({t:'fin',bot:c.netId,time:raceT});
         if(c===player){const p=standings().indexOf(player)+1;flash(p===1?'WINNER!':'FINISH!',p+ord(p)+' · '+fmt(raceT),p===1?'':'white');blip(660,0.2,'square',0.2);setTimeout(()=>blip(990,0.4,'square',0.2),180);$('pushBtn').hidden=true;}}
       if(c.ghostT>0)c.ghostT=Math.max(0,c.ghostT-dt);
       const spd=Math.hypot(c.vx,c.vz);
