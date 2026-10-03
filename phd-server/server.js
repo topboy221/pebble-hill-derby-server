@@ -16,8 +16,7 @@ const GAME_FILE = ['pebble-hill-derby.html', 'index.html'].map(f => path.join(__
 const TRACK_IDS = ['pebble', 'city', 'nomahe', 'tokiyama', 'whitecow', 'aloma', 'mesozon'];           // keep in sync with TRACKS in the game
 const MAX_PLAYERS = 12;
 const TIMES = {                                   // seconds
-  publicWait: 20,        // quick-join lobby: countdown once 2+ racers are in
-  publicFull: 5,         // ...shortened when the lobby fills up
+  readyWait: 15,         // countdown once more than half the players (or the host) are ready
   loadTimeout: 25,       // waiting for everyone to build the track
   countdown: 3.6,        // matches the in-game 3-2-1
   afterFirst: 60,        // others get this long after the winner crosses the line
@@ -25,7 +24,7 @@ const TIMES = {                                   // seconds
   vote: 15,
   afterVote: 3,
 };
-if (process.env.PHD_FAST) Object.assign(TIMES, { publicWait: 3, publicFull: 2, vote: 30, afterVote: 2, afterFirst: 15 });   // for automated tests
+if (process.env.PHD_FAST) Object.assign(TIMES, { readyWait: 3, vote: 30, afterVote: 2, afterFirst: 15 });   // for automated tests
 const SNAP_MS = 50;                               // 20 position updates a second
 const RACE_IDLE_MS = 10000;                       // a racer whose car hasn't reported in this long (app switched away, phone locked, gone) is taken out of the race
 
@@ -88,11 +87,17 @@ const code = () => { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; f
 const pick = (a) => a[Math.random() * a.length | 0];
 function clean(str, max) { return String(str || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, max); }
 
+// AI fill: the host can let computer drivers take every free grid slot. Each lobby keeps its own set of 11 so they look the same race to race.
+// They're driven by the host's game (sent to everyone like a player) and a human always takes priority: whoever joins bumps one off the grid.
+const BOT_NAMES = ['Momo', 'Bram', 'Tilly', 'Kenji', 'Rosa', 'Lars', 'Ines', 'Dario', 'Yuki', 'Olek', 'Maya'];
+const BOT_PAINTS = ['#f2c230', '#1f5fd6', '#f0f0ea', '#1f8a4c', '#ef6a1a', '#aeb5bf', '#0f2e5a', '#6a1b24', '#7fbf3a', '#3b3f47', '#c8231f'];
+function makeBots() { return BOT_NAMES.map((n, k) => ({ name: n, car: { design: (k * 5 + 1) % 6, paint: BOT_PAINTS[k], rim: (k * 7) % 6, fin: (k * 3) % 6 } })); }
+const botsFor = (L, humans) => L.bots ? L.botPool.slice(0, Math.max(0, MAX_PLAYERS - humans)) : [];
 function makeLobby(opts) {
   const L = {
     id: code(), name: opts.name, private: !!opts.pass, salt: null, hash: null,
     host: null, state: 'lobby', players: [], track: pick(TRACK_IDS), nextTrack: null,
-    timer: null, timerEnds: 0, race: null, vote: null, created: Date.now(),
+    timer: null, timerEnds: 0, race: null, vote: null, created: Date.now(), bots: false, botPool: makeBots(),
   };
   if (opts.pass) { L.salt = crypto.randomBytes(12).toString('hex'); L.hash = hashPass(opts.pass, L.salt); }
   lobbies.set(L.id, L);
@@ -102,8 +107,8 @@ function lobbyInfo(L) {
   return {
     id: L.id, name: L.name, locked: L.private, host: L.host, state: L.state, track: L.nextTrack || null,
     countdown: L.timer ? Math.max(0, Math.ceil((L.timerEnds - Date.now()) / 1000)) : null,
-    players: L.players.map(c => ({ id: c.id, name: c.name, guest: c.guest, car: c.car, racing: !!(L.race && L.race.racers.has(c.id)) })),
-    max: MAX_PLAYERS,
+    players: L.players.map(c => ({ id: c.id, name: c.name, guest: c.guest, car: c.car, ready: !!c.ready, racing: !!(L.race && L.race.racers.has(c.id)) })),
+    max: MAX_PLAYERS, bots: !!L.bots, botList: botsFor(L, L.players.length).map(b => ({ name: b.name, paint: b.car.paint })),
   };
 }
 const LAG = +process.env.PHD_LAG || 0;            // test only: fake network delay (ms each way)
@@ -114,20 +119,25 @@ function pushLobby(L) { const info = lobbyInfo(L); for (const c of L.players) se
 function setTimer(L, secs, fn) { clearTimeout(L.timer); L.timerEnds = Date.now() + secs * 1000; L.timer = setTimeout(() => { L.timer = null; fn(); }, secs * 1000); }
 function clearTimer(L) { clearTimeout(L.timer); L.timer = null; }
 
-// quick-join lobbies start by themselves once there are 2+ racers; private ones wait for the host
+// ready check: the countdown runs while more than half of the players in the lobby are ready, or the host is.
+// Someone un-readying (or joining) so that's no longer true stops it. A quick-join lobby needs 2 people unless AI cars fill the grid.
+function readyToGo(L) {
+  const n = L.players.length; if (!n) return false;
+  if (!L.private && !L.bots && n < 2) return false;
+  const host = L.players.find(p => p.id === L.host), rdy = L.players.filter(p => p.ready).length;
+  return !!(host && host.ready) || rdy * 2 > n;
+}
 function checkAutoStart(L) {
-  if (L.private || L.state !== 'lobby') return;
-  const n = L.players.length;
-  if (n < 2) { if (L.timer) { clearTimer(L); pushLobby(L); } return; }
-  const want = n >= MAX_PLAYERS ? TIMES.publicFull : TIMES.publicWait;
-  if (!L.timer || (L.timerEnds - Date.now()) / 1000 > want + 0.5) { setTimer(L, want, () => startRace(L)); pushLobby(L); }
+  if (L.state !== 'lobby') return;
+  if (readyToGo(L)) { if (!L.timer) { setTimer(L, TIMES.readyWait, () => startRace(L)); pushLobby(L); } }
+  else if (L.timer) { clearTimer(L); pushLobby(L); }
 }
 
 function joinLobby(c, L) {
   if (c.lobby === L) return;
   if (c.lobby) leaveLobby(c);
   if (L.players.length >= MAX_PLAYERS) return send(c, { t: 'error', where: 'join', msg: 'That server is full (12/12).' });
-  L.players.push(c); c.lobby = L;
+  L.players.push(c); c.lobby = L; c.ready = false;
   if (!L.host) L.host = c.id;
   pushLobby(L);
   if (L.state === 'loading' || L.state === 'race') send(c, { t: 'info', msg: 'A race is running. You\'ll be on the grid for the next one.' });
@@ -136,10 +146,11 @@ function joinLobby(c, L) {
 }
 function leaveLobby(c) {
   const L = c.lobby; if (!L) return;
-  L.players = L.players.filter(p => p !== c); c.lobby = null;
+  L.players = L.players.filter(p => p !== c); c.lobby = null; c.ready = false;
   if (L.race && L.race.racers.has(c.id)) {
     L.race.racers.delete(c.id); L.race.states.delete(c.id); L.race.loaded.delete(c.id);
     broadcast(L, { t: 'gone', id: c.id });
+    if (L.race.botHost === c.id) dropBots(L, true);                    // their game was driving the AI cars
     if (L.state === 'loading') maybeGo(L); else if (L.state === 'race') maybeEnd(L);
   }
   if (L.vote) { L.vote.ballots.delete(c.id); }
@@ -163,15 +174,19 @@ function startRace(L) {
   if (L.players.some(p => now0 - p.lastSeen > 4500) && (L.holds = (L.holds || 0) + 1) <= 6) { setTimer(L, 1.5, () => startRace(L)); pushLobby(L); return; }
   L.holds = 0;
   const racers = L.players.slice(0, MAX_PLAYERS);
+  for (const c of racers) c.ready = false;
   const slots = [...Array(MAX_PLAYERS).keys()].sort(() => Math.random() - 0.5);   // random grid
   const grid = {}; racers.forEach((c, i) => { grid[c.id] = slots[i]; });
+  const bots = botsFor(L, racers.length).map((b, k) => ({ id: -(k + 1), name: b.name, car: b.car, bot: true }));
+  bots.forEach((b, k) => { grid[b.id] = slots[racers.length + k]; });
   L.race = {
     track, grid, racers: new Map(racers.map(c => [c.id, { id: c.id, name: c.name, guest: c.guest, car: c.car, fin: null, lastS: 0 }])),
-    loaded: new Set(), states: new Map(), start: 0, firstFin: 0, snapTimer: null, endTimer: null,
+    loaded: new Set(), states: new Map(), start: 0, firstFin: 0, snapTimer: null, endTimer: null, botHost: bots.length ? L.host : null,
   };
+  for (const b of bots) L.race.racers.set(b.id, { id: b.id, name: b.name, guest: false, bot: true, car: b.car, fin: null, lastS: 0 });
   L.state = 'loading';
-  const roster = [...L.race.racers.values()].map(r => ({ id: r.id, name: r.name, guest: r.guest, car: r.car, slot: grid[r.id] }));
-  for (const c of racers) send(c, { t: 'race', track, roster, you: c.id });
+  const roster = [...L.race.racers.values()].map(r => ({ id: r.id, name: r.name, guest: r.guest, car: r.car, slot: grid[r.id], bot: !!r.bot }));
+  for (const c of racers) send(c, { t: 'race', track, roster, you: c.id, botHost: L.race.botHost });
   setTimer(L, TIMES.loadTimeout, () => go(L));
   const chk = setInterval(() => { if (L.state !== 'loading') return clearInterval(chk); maybeGo(L); }, 1000);
   pushLobby(L);
@@ -180,8 +195,8 @@ function maybeGo(L) {
   if (L.state !== 'loading') return;
   if (!L.race.racers.size) return backToLobby(L);
   const now = Date.now();
-  for (const id of L.race.racers.keys()) {
-    if (L.race.loaded.has(id)) continue;
+  for (const [id, r] of L.race.racers) {
+    if (r.bot || L.race.loaded.has(id)) continue;
     const p = L.players.find(x => x.id === id);
     if (p && now - p.lastSeen < STALE_MS) return;          // still loading: wait for them (a silent connection isn't waited for)
   }
@@ -190,7 +205,8 @@ function maybeGo(L) {
 function go(L) {
   if (L.state !== 'loading') return;
   clearTimer(L);
-  for (const id of [...L.race.racers.keys()]) if (!L.race.loaded.has(id)) L.race.racers.get(id).dnf = true;   // never loaded: sits this one out
+  for (const [id, r] of L.race.racers) if (!r.bot && !L.race.loaded.has(id)) r.dnf = true;   // never loaded: sits this one out
+  if (L.race.botHost != null && !L.race.loaded.has(L.race.botHost)) dropBots(L);              // the AI drivers' host never made it: no AI this race
   // everyone gets the same start moment on the server clock (plus a little slack for delivery), so all countdowns hit GO together
   const now = Date.now();
   L.state = 'race'; L.race.start = now + TIMES.countdown * 1000 + 700;
@@ -221,6 +237,21 @@ function checkIdle(L) {
   }
   maybeEnd(L);
 }
+function dropBots(L, tell) {
+  if (!L.race) return;
+  for (const r of L.race.racers.values()) if (r.bot && !r.fin && !r.dnf) { r.dnf = true; L.race.states.delete(r.id); if (tell) broadcast(L, { t: 'gone', id: r.id }); }
+}
+function onBotStates(c, list) {
+  const L = c.lobby; if (!L || L.state !== 'race' || L.race.botHost !== c.id || !Array.isArray(list) || list.length > MAX_PLAYERS) return;
+  const now = Date.now();
+  for (const e of list) {
+    if (!Array.isArray(e) || e.length !== 15) continue;
+    const r = L.race.racers.get(e[0]); if (!r || !r.bot || r.dnf) continue;
+    const a = e.slice(1); if (!a.every(v => typeof v === 'number' && isFinite(v))) continue;
+    r.lastSt = now; if (!r.fin) r.lastS = a[7];
+    L.race.states.set(r.id, a);
+  }
+}
 function onState(c, a) {
   const L = c.lobby; if (!L || L.state !== 'race' || !L.race.racers.has(c.id)) return;
   if (!Array.isArray(a) || (a.length !== 13 && a.length !== 14) || !a.every(v => typeof v === 'number' && isFinite(v))) return;
@@ -230,9 +261,10 @@ function onState(c, a) {
   r.lastS = a[7];
   L.race.states.set(c.id, a);
 }
-function onFinish(c, time) {
+function onFinish(c, time, bot) {
   const L = c.lobby; if (!L || L.state !== 'race') return;
-  const r = L.race.racers.get(c.id); if (!r || r.fin || r.dnf) return;
+  if (bot != null && L.race.botHost !== c.id) return;                        // only the host's game reports its AI drivers
+  const r = L.race.racers.get(bot != null ? bot : c.id); if (!r || r.fin || r.dnf || (bot != null && !r.bot)) return;
   const elapsed = (Date.now() - L.race.start) / 1000;
   let t = +time;
   if (!process.env.PHD_FAST) {                                                   // (automated tests fast-forward the clock)
@@ -242,12 +274,12 @@ function onFinish(c, time) {
   r.fin = t;
   if (!L.race.firstFin) { L.race.firstFin = Date.now(); clearTimeout(L.race.endTimer); L.race.endTimer = setTimeout(() => endRace(L), TIMES.afterFirst * 1000); }
   const place = [...L.race.racers.values()].filter(x => x.fin).length;
-  broadcast(L, { t: 'fin', id: c.id, time: t, place });
+  broadcast(L, { t: 'fin', id: r.id, time: t, place });
   maybeEnd(L);
 }
 function maybeEnd(L) {
   if (L.state !== 'race') return;
-  const left = [...L.race.racers.values()].filter(r => !r.fin && !r.dnf);
+  const left = [...L.race.racers.values()].filter(r => !r.fin && !r.dnf && !r.bot);
   if (!left.length) endRace(L);
 }
 function endRace(L) {
@@ -255,7 +287,7 @@ function endRace(L) {
   clearInterval(L.race.snapTimer); clearInterval(L.race.idleTimer); clearTimeout(L.race.endTimer);
   const rows = [...L.race.racers.values()]
     .sort((a, b) => (a.fin && b.fin) ? a.fin - b.fin : a.fin ? -1 : b.fin ? 1 : b.lastS - a.lastS)
-    .map((r, i) => ({ id: r.id, name: r.name, guest: r.guest, paint: r.car && r.car.paint, time: r.fin || null, place: i + 1 }));
+    .map((r, i) => ({ id: r.id, name: r.name, guest: r.guest, bot: !!r.bot, paint: r.car && r.car.paint, time: r.fin || null, place: i + 1 }));
   L.lastRows = rows;
   L.state = 'results';
   const opts = TRACK_IDS.length >= 2 ? TRACK_IDS.slice().sort(() => Math.random() - 0.5).slice(0, 2) : [TRACK_IDS[0], TRACK_IDS[0]];
@@ -284,8 +316,7 @@ function closeVote(L) {
   L.nextTrack = winner; L.vote = null;
   broadcast(L, { t: 'voted', track: winner, counts: vi.counts, options: vi.options });
   L.state = 'lobby'; L.race = null;
-  if (L.private || L.players.length >= 2) setTimer(L, TIMES.afterVote, () => { L.state = 'lobby'; startRace(L); });
-  else checkAutoStart(L);
+  checkAutoStart(L);                                                    // everyone readies up again for the next race
   pushLobby(L);
 }
 function backToLobby(L) { clearTimer(L); if (L.race) { clearInterval(L.race.snapTimer); clearInterval(L.race.idleTimer); clearTimeout(L.race.endTimer); } L.race = null; L.state = 'lobby'; checkAutoStart(L); pushLobby(L); }
@@ -387,17 +418,28 @@ function handle(c, m) {
       return joinLobby(c, L);
     }
     case 'leave': leaveLobby(c); return send(c, { t: 'left' });
-    case 'start': { const L = c.lobby; if (L && L.private && L.host === c.id && L.state === 'lobby') startRace(L); return; }
+    case 'start': { const L = c.lobby; if (L && L.private && L.host === c.id && L.state === 'lobby') startRace(L); return; }   // (older game versions)
+    case 'ready': { const L = c.lobby; if (!L) return; c.ready = !!m.on; checkAutoStart(L); pushLobby(L); return; }
     case 'loaded': { const L = c.lobby; if (L && L.state === 'loading' && L.race.racers.has(c.id)) { L.race.loaded.add(c.id); maybeGo(L); } return; }
     case 'st': return onState(c, m.s);
-    case 'fin': return onFinish(c, m.time);
+    case 'fin': return onFinish(c, m.time, Number.isInteger(m.bot) && m.bot < 0 ? m.bot : null);
+    case 'bst': return onBotStates(c, m.s);
+    case 'bots': { const L = c.lobby; if (!L || L.host !== c.id) return; L.bots = !!m.on; checkAutoStart(L); pushLobby(L); return; }
     case 'vote': return onVote(c, m.track);
     case 'hit': {                                           // a bump: pass the push on to the car that was hit
       const L = c.lobby; if (!L || L.state !== 'race' || !L.race.racers.has(c.id)) return;
-      const t = L.players.find(p => p.id === m.to); if (!t || t === c || !L.race.racers.has(t.id)) return;
       const j = Array.isArray(m.j) ? m.j : [], jx = +j[0], jz = +j[1], r = +m.r;
       if (!isFinite(jx) || !isFinite(jz) || Math.hypot(jx, jz) > 30000) return;
-      return send(t, { t: 'hit', from: c.id, j: [Math.round(jx), Math.round(jz)], r: isFinite(r) ? Math.max(-0.35, Math.min(0.35, r)) : 0 });
+      const rr = isFinite(r) ? Math.max(-0.35, Math.min(0.35, r)) : 0;
+      // who did the bumping: the sender's own car, or one of the AI cars their game drives
+      const as = Number.isInteger(m.as) && m.as < 0 && L.race.botHost === c.id && L.race.racers.has(m.as) ? m.as : c.id;
+      const tb = L.race.racers.get(m.to);
+      if (tb && tb.bot) {                                    // an AI car was hit: tell the game that drives it
+        if (tb.dnf || L.race.botHost === c.id) return; const h = L.players.find(p => p.id === L.race.botHost); if (!h) return;
+        return send(h, { t: 'hit', from: as, bot: tb.id, j: [Math.round(jx), Math.round(jz)], r: rr });
+      }
+      const t = L.players.find(p => p.id === m.to); if (!t || t === c || !L.race.racers.has(t.id)) return;
+      return send(t, { t: 'hit', from: as, j: [Math.round(jx), Math.round(jz)], r: rr });
     }
   }
 }
