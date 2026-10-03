@@ -27,6 +27,7 @@ const TIMES = {                                   // seconds
 };
 if (process.env.PHD_FAST) Object.assign(TIMES, { publicWait: 3, publicFull: 2, vote: 30, afterVote: 2, afterFirst: 15 });   // for automated tests
 const SNAP_MS = 50;                               // 20 position updates a second
+const RACE_IDLE_MS = 10000;                       // a racer whose car hasn't reported in this long (app switched away, phone locked, gone) is taken out of the race
 
 /* ---------------- storage (JSON files; swap for a database when you outgrow it) ---------------- */
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -142,7 +143,7 @@ function leaveLobby(c) {
     if (L.state === 'loading') maybeGo(L); else if (L.state === 'race') maybeEnd(L);
   }
   if (L.vote) { L.vote.ballots.delete(c.id); }
-  if (!L.players.length) { clearTimer(L); clearInterval(L.race && L.race.snapTimer); lobbies.delete(L.id); return; }
+  if (!L.players.length) { clearTimer(L); clearInterval(L.race && L.race.snapTimer); clearInterval(L.race && L.race.idleTimer); lobbies.delete(L.id); return; }
   if (L.host === c.id) L.host = L.players[0].id;
   if (L.state === 'lobby') checkAutoStart(L);
   pushLobby(L);
@@ -195,6 +196,7 @@ function go(L) {
   L.state = 'race'; L.race.start = now + TIMES.countdown * 1000 + 700;
   for (const c of L.players) if (L.race.racers.has(c.id)) send(c, { t: 'go', countdown: TIMES.countdown, startAt: L.race.start, now });
   L.race.snapTimer = setInterval(() => snap(L), SNAP_MS);
+  L.race.idleTimer = setInterval(() => checkIdle(L), 1000);
   L.race.endTimer = setTimeout(() => endRace(L), (TIMES.countdown + TIMES.maxRace) * 1000);
   pushLobby(L);
 }
@@ -204,10 +206,27 @@ function snap(L) {
   const msg = JSON.stringify({ t: 'snap', cars });
   for (const c of L.players) if (L.race.racers.has(c.id) && c.ws.readyState === 1) wsend(c.ws, msg);
 }
+// inactivity kick: no position from a racer for RACE_IDLE_MS (counted from GO) -> out of this race (DNF). They stay in the
+// lobby for the next race; everyone else's game removes the car, and the race no longer waits for them to finish
+function checkIdle(L) {
+  if (L.state !== 'race' || !L.race) return clearInterval(L.race && L.race.idleTimer);
+  const now = Date.now(); if (now < L.race.start) return;
+  for (const r of L.race.racers.values()) {
+    if (r.fin || r.dnf) continue;
+    if (now - Math.max(r.lastSt || 0, L.race.start) < RACE_IDLE_MS) continue;
+    r.dnf = true; r.idle = true; L.race.states.delete(r.id);
+    if (process.env.PHD_DEBUG) console.log('idle kick', r.name);
+    broadcast(L, { t: 'gone', id: r.id });
+    const p = L.players.find(x => x.id === r.id); if (p) send(p, { t: 'out', msg: 'You were taken out of the race: no signal from your game for ' + Math.round(RACE_IDLE_MS / 1000) + ' s.' });
+  }
+  maybeEnd(L);
+}
 function onState(c, a) {
   const L = c.lobby; if (!L || L.state !== 'race' || !L.race.racers.has(c.id)) return;
   if (!Array.isArray(a) || (a.length !== 13 && a.length !== 14) || !a.every(v => typeof v === 'number' && isFinite(v))) return;
-  const r = L.race.racers.get(c.id); if (r.fin) { L.race.states.set(c.id, a); return; }
+  const r = L.race.racers.get(c.id); if (r.dnf) return;                 // taken out of this race: no longer shown to anyone
+  r.lastSt = Date.now();
+  if (r.fin) { L.race.states.set(c.id, a); return; }
   r.lastS = a[7];
   L.race.states.set(c.id, a);
 }
@@ -233,7 +252,7 @@ function maybeEnd(L) {
 }
 function endRace(L) {
   if (L.state !== 'race') return;
-  clearInterval(L.race.snapTimer); clearTimeout(L.race.endTimer);
+  clearInterval(L.race.snapTimer); clearInterval(L.race.idleTimer); clearTimeout(L.race.endTimer);
   const rows = [...L.race.racers.values()]
     .sort((a, b) => (a.fin && b.fin) ? a.fin - b.fin : a.fin ? -1 : b.fin ? 1 : b.lastS - a.lastS)
     .map((r, i) => ({ id: r.id, name: r.name, guest: r.guest, paint: r.car && r.car.paint, time: r.fin || null, place: i + 1 }));
@@ -269,7 +288,7 @@ function closeVote(L) {
   else checkAutoStart(L);
   pushLobby(L);
 }
-function backToLobby(L) { clearTimer(L); if (L.race) { clearInterval(L.race.snapTimer); clearTimeout(L.race.endTimer); } L.race = null; L.state = 'lobby'; checkAutoStart(L); pushLobby(L); }
+function backToLobby(L) { clearTimer(L); if (L.race) { clearInterval(L.race.snapTimer); clearInterval(L.race.idleTimer); clearTimeout(L.race.endTimer); } L.race = null; L.state = 'lobby'; checkAutoStart(L); pushLobby(L); }
 
 /* ---------------- messages ---------------- */
 function validCar(o) {
