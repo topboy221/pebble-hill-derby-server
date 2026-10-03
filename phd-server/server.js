@@ -14,7 +14,8 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 // the game page: public/pebble-hill-derby.html (an older public/index.html still works as a fallback)
 const GAME_FILE = ['pebble-hill-derby.html', 'index.html'].map(f => path.join(__dirname, 'public', f)).find(f => fs.existsSync(f)) || path.join(__dirname, 'public', 'pebble-hill-derby.html');
 const TRACK_IDS = ['pebble', 'city', 'nomahe', 'tokiyama', 'whitecow', 'aloma', 'mesozon'];           // keep in sync with TRACKS in the game
-const MAX_PLAYERS = 12;
+const MAX_PLAYERS = 12;                           // a normal race
+const SURV_PLAYERS = 50;                          // Survival: 50 cars, AI fills whatever the humans don't
 const TIMES = {                                   // seconds
   readyWait: 15,         // countdown once more than half the players (or the host) are ready
   loadTimeout: 25,       // waiting for everyone to build the track
@@ -89,15 +90,18 @@ function clean(str, max) { return String(str || '').replace(/[\u0000-\u001f<>]/g
 
 // AI fill: the host can let computer drivers take every free grid slot. Each lobby keeps its own set of 11 so they look the same race to race.
 // They're driven by the host's game (sent to everyone like a player) and a human always takes priority: whoever joins bumps one off the grid.
-const BOT_NAMES = ['Momo', 'Bram', 'Tilly', 'Kenji', 'Rosa', 'Lars', 'Ines', 'Dario', 'Yuki', 'Olek', 'Maya'];
+const BOT_NAMES = ['Momo', 'Bram', 'Tilly', 'Kenji', 'Rosa', 'Lars', 'Ines', 'Dario', 'Yuki', 'Olek', 'Maya',
+  ...'Nico Ada Theo Lina Otto Zara Finn Ivy Hugo Nora Axel Mila Remy Suki Joel Pia Ravi Elsa Tomas Wren Aiko Bo Cleo Diego Esme Felix Greta Hal Iris Jonah Kaia Leon Mira Nils Opal Pavel Quinn Rhea'.split(' ')];
 const BOT_PAINTS = ['#f2c230', '#1f5fd6', '#f0f0ea', '#1f8a4c', '#ef6a1a', '#aeb5bf', '#0f2e5a', '#6a1b24', '#7fbf3a', '#3b3f47', '#c8231f'];
-function makeBots() { return BOT_NAMES.map((n, k) => ({ name: n, car: { design: (k * 5 + 1) % 6, paint: BOT_PAINTS[k], rim: (k * 7) % 6, fin: (k * 3) % 6 } })); }
-const botsFor = (L, humans) => L.bots ? L.botPool.slice(0, Math.max(0, MAX_PLAYERS - humans)) : [];
+function hsl2hex(h, s, l) { const f = n => { const k = (n + h * 12) % 12, a = s * Math.min(l, 1 - l), c = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); return Math.round(c * 255).toString(16).padStart(2, '0'); }; return '#' + f(0) + f(8) + f(4); }
+function makeBots(n) { return BOT_NAMES.slice(0, n).map((nm, k) => ({ name: nm, car: { design: (k * 5 + 1) % 6, paint: k < BOT_PAINTS.length ? BOT_PAINTS[k] : hsl2hex((k * 0.61803) % 1, 0.6, 0.45), rim: (k * 7) % 6, fin: (k * 3) % 6 } })); }
+const botsFor = (L, humans) => L.bots ? L.botPool.slice(0, Math.max(0, L.max - humans)) : [];
 function makeLobby(opts) {
+  const surv = opts.mode === 'survival', max = surv ? SURV_PLAYERS : MAX_PLAYERS;
   const L = {
     id: code(), name: opts.name, private: !!opts.pass, salt: null, hash: null,
     host: null, state: 'lobby', players: [], track: pick(TRACK_IDS), nextTrack: null,
-    timer: null, timerEnds: 0, race: null, vote: null, created: Date.now(), bots: false, botPool: makeBots(),
+    timer: null, timerEnds: 0, race: null, vote: null, created: Date.now(), mode: surv ? 'survival' : 'normal', max, bots: surv, botPool: makeBots(max - 1),
   };
   if (opts.pass) { L.salt = crypto.randomBytes(12).toString('hex'); L.hash = hashPass(opts.pass, L.salt); }
   lobbies.set(L.id, L);
@@ -108,7 +112,7 @@ function lobbyInfo(L) {
     id: L.id, name: L.name, locked: L.private, host: L.host, state: L.state, track: L.nextTrack || null,
     countdown: L.timer ? Math.max(0, Math.ceil((L.timerEnds - Date.now()) / 1000)) : null,
     players: L.players.map(c => ({ id: c.id, name: c.name, guest: c.guest, car: c.car, ready: !!c.ready, racing: !!(L.race && L.race.racers.has(c.id)) })),
-    max: MAX_PLAYERS, bots: !!L.bots, botList: botsFor(L, L.players.length).map(b => ({ name: b.name, paint: b.car.paint })),
+    max: L.max, mode: L.mode, bots: !!L.bots, botList: botsFor(L, L.players.length).map(b => ({ name: b.name, paint: b.car.paint })),
   };
 }
 const LAG = +process.env.PHD_LAG || 0;            // test only: fake network delay (ms each way)
@@ -136,7 +140,7 @@ function checkAutoStart(L) {
 function joinLobby(c, L) {
   if (c.lobby === L) return;
   if (c.lobby) leaveLobby(c);
-  if (L.players.length >= MAX_PLAYERS) return send(c, { t: 'error', where: 'join', msg: 'That server is full (12/12).' });
+  if (L.players.length >= L.max) return send(c, { t: 'error', where: 'join', msg: 'That server is full (' + L.max + '/' + L.max + ').' });
   L.players.push(c); c.lobby = L; c.ready = false;
   if (!L.host) L.host = c.id;
   pushLobby(L);
@@ -173,20 +177,25 @@ function startRace(L) {
   if (!L.players.length) return;
   if (L.players.some(p => now0 - p.lastSeen > 4500) && (L.holds = (L.holds || 0) + 1) <= 6) { setTimer(L, 1.5, () => startRace(L)); pushLobby(L); return; }
   L.holds = 0;
-  const racers = L.players.slice(0, MAX_PLAYERS);
+  const racers = L.players.slice(0, L.max);
   for (const c of racers) c.ready = false;
-  const slots = [...Array(MAX_PLAYERS).keys()].sort(() => Math.random() - 0.5);   // random grid
-  const grid = {}; racers.forEach((c, i) => { grid[c.id] = slots[i]; });
   const bots = botsFor(L, racers.length).map((b, k) => ({ id: -(k + 1), name: b.name, car: b.car, bot: true }));
-  bots.forEach((b, k) => { grid[b.id] = slots[racers.length + k]; });
+  const grid = {}, shuffle = a => a.sort(() => Math.random() - 0.5);
+  if (L.mode === 'survival') {                         // Survival: the humans start at the very back, behind every AI car
+    const n = racers.length + bots.length, back = shuffle([...Array(racers.length).keys()].map(i => n - 1 - i)), front = shuffle([...Array(bots.length).keys()]);
+    racers.forEach((c, i) => { grid[c.id] = back[i]; }); bots.forEach((b, k) => { grid[b.id] = front[k]; });
+  } else {
+    const slots = shuffle([...Array(L.max).keys()]);   // random grid
+    racers.forEach((c, i) => { grid[c.id] = slots[i]; }); bots.forEach((b, k) => { grid[b.id] = slots[racers.length + k]; });
+  }
   L.race = {
     track, grid, racers: new Map(racers.map(c => [c.id, { id: c.id, name: c.name, guest: c.guest, car: c.car, fin: null, lastS: 0 }])),
-    loaded: new Set(), states: new Map(), start: 0, firstFin: 0, snapTimer: null, endTimer: null, botHost: bots.length ? L.host : null,
+    loaded: new Set(), states: new Map(), dirty: new Set(), start: 0, firstFin: 0, snapTimer: null, endTimer: null, botHost: bots.length ? L.host : null,
   };
   for (const b of bots) L.race.racers.set(b.id, { id: b.id, name: b.name, guest: false, bot: true, car: b.car, fin: null, lastS: 0 });
   L.state = 'loading';
   const roster = [...L.race.racers.values()].map(r => ({ id: r.id, name: r.name, guest: r.guest, car: r.car, slot: grid[r.id], bot: !!r.bot }));
-  for (const c of racers) send(c, { t: 'race', track, roster, you: c.id, botHost: L.race.botHost });
+  for (const c of racers) send(c, { t: 'race', track, roster, you: c.id, botHost: L.race.botHost, mode: L.mode });
   setTimer(L, TIMES.loadTimeout, () => go(L));
   const chk = setInterval(() => { if (L.state !== 'loading') return clearInterval(chk); maybeGo(L); }, 1000);
   pushLobby(L);
@@ -217,8 +226,10 @@ function go(L) {
   pushLobby(L);
 }
 function snap(L) {
-  if (!L.race || !L.race.states.size) return;
-  const cars = []; for (const [id, s] of L.race.states) cars.push([id, ...s]);
+  if (!L.race || !L.race.dirty.size) return;
+  // only cars with a new update since the last snap (an unchanged one would be skipped by every game anyway): halves the AI traffic in Survival
+  const cars = []; for (const id of L.race.dirty) { const s = L.race.states.get(id); if (s) cars.push([id, ...s]); } L.race.dirty.clear();
+  if (!cars.length) return;
   const msg = JSON.stringify({ t: 'snap', cars });
   for (const c of L.players) if (L.race.racers.has(c.id) && c.ws.readyState === 1) wsend(c.ws, msg);
 }
@@ -242,14 +253,14 @@ function dropBots(L, tell) {
   for (const r of L.race.racers.values()) if (r.bot && !r.fin && !r.dnf) { r.dnf = true; L.race.states.delete(r.id); if (tell) broadcast(L, { t: 'gone', id: r.id }); }
 }
 function onBotStates(c, list) {
-  const L = c.lobby; if (!L || L.state !== 'race' || L.race.botHost !== c.id || !Array.isArray(list) || list.length > MAX_PLAYERS) return;
+  const L = c.lobby; if (!L || L.state !== 'race' || L.race.botHost !== c.id || !Array.isArray(list) || list.length > L.max) return;
   const now = Date.now();
   for (const e of list) {
     if (!Array.isArray(e) || e.length !== 15) continue;
     const r = L.race.racers.get(e[0]); if (!r || !r.bot || r.dnf) continue;
     const a = e.slice(1); if (!a.every(v => typeof v === 'number' && isFinite(v))) continue;
     r.lastSt = now; if (!r.fin) r.lastS = a[7];
-    L.race.states.set(r.id, a);
+    L.race.states.set(r.id, a); L.race.dirty.add(r.id);
   }
 }
 function onState(c, a) {
@@ -257,6 +268,7 @@ function onState(c, a) {
   if (!Array.isArray(a) || (a.length !== 13 && a.length !== 14) || !a.every(v => typeof v === 'number' && isFinite(v))) return;
   const r = L.race.racers.get(c.id); if (r.dnf) return;                 // taken out of this race: no longer shown to anyone
   r.lastSt = Date.now();
+  L.race.dirty.add(c.id);
   if (r.fin) { L.race.states.set(c.id, a); return; }
   r.lastS = a[7];
   L.race.states.set(c.id, a);
@@ -354,7 +366,7 @@ function rejoin(c, sid) {
   if (P.guest && online.has(P.name.toLowerCase())) return send(c, { t: 'error', where: 'rejoin', msg: 'Name in use.' });
   authed(c, P.name, P.guest, null);
   const L = P.lobbyId && lobbies.get(P.lobbyId);
-  if (L && L.players.length < MAX_PLAYERS) joinLobby(c, L);
+  if (L && L.players.length < L.max) joinLobby(c, L);
 }
 function handle(c, m) {
   switch (m.t) {
@@ -394,18 +406,19 @@ function handle(c, m) {
   if (!c.name) return send(c, { t: 'error', where: 'auth', msg: 'Sign in first.' });
   switch (m.t) {
     case 'car': c.car = validCar(m.car); if (c.lobby) pushLobby(c.lobby); return;
-    case 'list': return send(c, { t: 'lobbies', list: [...lobbies.values()].filter(L => L.private).map(L => ({ id: L.id, name: L.name, players: L.players.length, max: MAX_PLAYERS, state: L.state, locked: true })) });
+    case 'list': return send(c, { t: 'lobbies', list: [...lobbies.values()].filter(L => L.private).map(L => ({ id: L.id, name: L.name, players: L.players.length, max: L.max, mode: L.mode, state: L.state, locked: true })) });
     case 'quick': {
       c.car = validCar(m.car) || c.car;
-      const open = [...lobbies.values()].filter(L => !L.private && (L.state === 'lobby' || L.state === 'results') && L.players.length < MAX_PLAYERS)
+      const mode = m.mode === 'survival' ? 'survival' : 'normal';
+      const open = [...lobbies.values()].filter(L => !L.private && L.mode === mode && (L.state === 'lobby' || L.state === 'results') && L.players.length < L.max)
         .sort((a, b) => b.players.length - a.players.length || a.created - b.created);
-      return joinLobby(c, open[0] || makeLobby({ name: 'Open lobby' }));
+      return joinLobby(c, open[0] || makeLobby({ name: mode === 'survival' ? 'Survival lobby' : 'Open lobby', mode }));
     }
     case 'create': {
       c.car = validCar(m.car) || c.car;
       const name = clean(m.name, 24) || (c.name + '\'s server'), pass = String(m.pass || '');
       if (pass.length < 3 || pass.length > 32) return send(c, { t: 'error', where: 'create', msg: 'Password: 3–32 characters.' });
-      return joinLobby(c, makeLobby({ name, pass }));
+      return joinLobby(c, makeLobby({ name, pass, mode: m.mode === 'survival' ? 'survival' : 'normal' }));
     }
     case 'join': {
       c.car = validCar(m.car) || c.car;
@@ -424,7 +437,7 @@ function handle(c, m) {
     case 'st': return onState(c, m.s);
     case 'fin': return onFinish(c, m.time, Number.isInteger(m.bot) && m.bot < 0 ? m.bot : null);
     case 'bst': return onBotStates(c, m.s);
-    case 'bots': { const L = c.lobby; if (!L || L.host !== c.id) return; L.bots = !!m.on; checkAutoStart(L); pushLobby(L); return; }
+    case 'bots': { const L = c.lobby; if (!L || L.host !== c.id) return; L.bots = L.mode === 'survival' || !!m.on; checkAutoStart(L); pushLobby(L); return; }   // Survival is always 50 cars
     case 'vote': return onVote(c, m.track);
     case 'hit': {                                           // a bump: pass the push on to the car that was hit
       const L = c.lobby; if (!L || L.state !== 'race' || !L.race.racers.has(c.id)) return;
