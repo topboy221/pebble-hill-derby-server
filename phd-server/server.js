@@ -1,5 +1,6 @@
 // Pebble Hill Derby — multiplayer server
-// One Node process: serves the game page, handles accounts (guest / register / login),
+// One Node process: serves the game page, handles accounts (guest, or email + password; each account keeps
+// its racer name, best times per track, unlocked cars and career progress in DATA_DIR/users.json),
 // lobbies (up to 12 racers, public quick-join or password-protected private servers),
 // relays car positions during races, collects results and runs the next-track vote.
 'use strict';
@@ -34,7 +35,12 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const SESS_FILE = path.join(DATA_DIR, 'sessions.json');
 const readJSON = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return {}; } };
-let users = readJSON(USERS_FILE);                 // lower-case name -> {name, salt, hash, created}
+let users = readJSON(USERS_FILE);                 // account key (lower-case email; older accounts: lower-case username) -> {name, email, salt, hash, created, data}
+// account data kept for each player: best times per track/mode, unlocked cars (null = everything that's in the game), career progress (for the coming career mode)
+const freshData = () => ({ best: {}, unlocked: null, career: {} });
+for (const k in users) if (!users[k].data) users[k].data = freshData();
+const nameIndex = new Map();                      // lower-case display name -> account key (display names are unique)
+for (const k in users) nameIndex.set(users[k].name.toLowerCase(), k);
 let sessions = readJSON(SESS_FILE);               // token -> {key, exp}
 const saveTimers = {};
 function save(file, obj) {
@@ -72,6 +78,19 @@ function guestName() {
   return 'Racer' + crypto.randomBytes(3).toString('hex');
 }
 const isGuestLike = (n) => ADJ.some(a => n.toLowerCase().startsWith(a.toLowerCase())) && ANIMAL.some(a => n.toLowerCase().includes(a.toLowerCase()));
+const EMAIL_RE = /^[^\s@<>]{1,64}@[^\s@<>]{1,190}\.[A-Za-z]{2,24}$/;
+const nameFree = (n, key) => { const k = n.toLowerCase(), o = nameIndex.get(k); return (!o || o === key) && !isGuestLike(n) && (!online.has(k) || (online.get(k).key === key && key)); };
+function nameFromEmail(email) {   // a racer name from the address: "ivan.r@x.com" -> "ivan_r", made unique with a number if needed
+  let b = email.split('@')[0].replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 12) || 'racer';
+  if (b.length < 3) b = (b + 'racer').slice(0, 5);
+  if (nameFree(b)) return b;
+  for (let k = 0; k < 500; k++) { const n = b.slice(0, 12) + (k < 98 ? 2 + k : 100 + (Math.random() * 9000 | 0)); if (nameFree(n)) return n; }
+  return 'racer' + crypto.randomBytes(3).toString('hex');
+}
+function sendProfile(c) {   // what the game shows on the Account screen and syncs locally
+  const u = c.key && users[c.key]; if (!u) return;
+  send(c, { t: 'profile', name: u.name, email: u.email || null, created: u.created, data: u.data });
+}
 
 /* ---------------- login rate limit ---------------- */
 const attempts = new Map();                       // ip -> [timestamps]
@@ -94,7 +113,7 @@ const BOT_NAMES = ['Momo', 'Bram', 'Tilly', 'Kenji', 'Rosa', 'Lars', 'Ines', 'Da
   ...'Nico Ada Theo Lina Otto Zara Finn Ivy Hugo Nora Axel Mila Remy Suki Joel Pia Ravi Elsa Tomas Wren Aiko Bo Cleo Diego Esme Felix Greta Hal Iris Jonah Kaia Leon Mira Nils Opal Pavel Quinn Rhea'.split(' ')];
 const BOT_PAINTS = ['#f2c230', '#1f5fd6', '#f0f0ea', '#1f8a4c', '#ef6a1a', '#aeb5bf', '#0f2e5a', '#6a1b24', '#7fbf3a', '#3b3f47', '#c8231f'];
 function hsl2hex(h, s, l) { const f = n => { const k = (n + h * 12) % 12, a = s * Math.min(l, 1 - l), c = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); return Math.round(c * 255).toString(16).padStart(2, '0'); }; return '#' + f(0) + f(8) + f(4); }
-function makeBots(n) { return BOT_NAMES.slice(0, n).map((nm, k) => ({ name: nm, car: { design: (k * 5 + 1) % 25, paint: k < BOT_PAINTS.length ? BOT_PAINTS[k] : hsl2hex((k * 0.61803) % 1, 0.6, 0.45), rim: (k * 7) % 6, fin: (k * 3) % 6 } }   /* any of the 25 pack bodies */)); }
+function makeBots(n) { return BOT_NAMES.slice(0, n).map((nm, k) => ({ name: nm, car: { design: (k * 5 + 1) % 25, paint: k < BOT_PAINTS.length ? BOT_PAINTS[k] : hsl2hex((k * 0.61803) % 1, 0.6, 0.45), rim: (k * 7) % 6, fin: (k * 3) % 6, rs: 15 + (k * 3) % 6 } }   /* any of the 25 pack bodies */)); }
 const botsFor = (L, humans) => L.bots ? L.botPool.slice(0, Math.max(0, L.max - humans)) : [];
 function makeLobby(opts) {
   const surv = opts.mode === 'survival', max = surv ? SURV_PLAYERS : MAX_PLAYERS;
@@ -337,16 +356,18 @@ function backToLobby(L) { clearTimer(L); if (L.race) { clearInterval(L.race.snap
 function validCar(o) {
   if (!o || typeof o !== 'object') return null;
   const i = (v, m) => Number.isInteger(v) && v >= 0 && v < m ? v : 0;
-  return { design: i(o.design, 32), paint: /^#[0-9a-f]{6}$/i.test(o.paint) ? o.paint : '#c8231f', rim: i(o.rim, 32), fin: i(o.fin, 32) };
+  return { design: i(o.design, 32), paint: /^#[0-9a-f]{6}$/i.test(o.paint) ? o.paint : '#c8231f', rim: i(o.rim, 32), fin: i(o.fin, 32), rs: Number.isInteger(o.rs) && o.rs >= 13 && o.rs <= 22 ? o.rs : 18, off: Number.isInteger(o.off) && o.off >= 0 && o.off <= 16 ? o.off : 0, rh: Number.isInteger(o.rh) && Math.abs(o.rh) <= 3 ? o.rh : 0 };   // rs: rim size in inches
 }
-function authed(c, name, guest, token) {
+function authed(c, name, guest, token, acct) {
   const key = name.toLowerCase();
+  c.key = guest ? null : (acct || nameIndex.get(key) || null);
   const prev = online.get(key);
   if (prev && prev !== c) { send(prev, { t: 'kicked', msg: 'Signed in somewhere else.' }); leaveLobby(prev); prev.name = null; prev.ws.close(); }
   if (c.name) online.delete(c.name.toLowerCase());
   c.name = name; c.guest = guest; online.set(key, c);
   if (!c.sid) c.sid = crypto.randomBytes(12).toString('hex');       // lets this player take their seat back after a dropped connection
-  send(c, { t: 'auth', name, guest, token: token || null, sid: c.sid });
+  send(c, { t: 'auth', name, guest, token: token || null, sid: c.sid, email: c.key && users[c.key] ? users[c.key].email || null : null });
+  if (c.key) sendProfile(c);
 }
 // players whose connection dropped (phone locked, network switch): their name + lobby are kept for a while so they can rejoin
 const parked = new Map();                          // sid -> {name, guest, car, lobbyId, until}
@@ -355,16 +376,16 @@ function rejoin(c, sid) {
   sid = String(sid || '');
   // the old connection may still look alive here (it died silently): take the seat over from it right away
   for (const o of clients) if (o !== c && o.sid === sid && o.name) {
-    parked.set(sid, { name: o.name, guest: o.guest, car: o.car, lobbyId: o.lobby && o.lobby.id, until: Date.now() + PARK_MS });
+    parked.set(sid, { name: o.name, key: o.key, guest: o.guest, car: o.car, lobbyId: o.lobby && o.lobby.id, until: Date.now() + PARK_MS });
     leaveLobby(o); if (online.get(o.name.toLowerCase()) === o) online.delete(o.name.toLowerCase());
     o.sid = null; o.name = null; try { o.ws.terminate(); } catch (e) {}
   }
   const P = parked.get(sid); parked.delete(sid);
   if (!P || P.until < Date.now()) return send(c, { t: 'error', where: 'rejoin', msg: 'Session over.' });
-  if (!P.guest && !users[P.name.toLowerCase()]) return send(c, { t: 'error', where: 'rejoin', msg: 'Session over.' });
+  if (!P.guest && !users[P.key || nameIndex.get(P.name.toLowerCase())]) return send(c, { t: 'error', where: 'rejoin', msg: 'Session over.' });
   c.sid = sid; c.car = P.car || c.car;
   if (P.guest && online.has(P.name.toLowerCase())) return send(c, { t: 'error', where: 'rejoin', msg: 'Name in use.' });
-  authed(c, P.name, P.guest, null);
+  authed(c, P.name, P.guest, null, P.key);
   const L = P.lobbyId && lobbies.get(P.lobbyId);
   if (L && L.players.length < L.max) joinLobby(c, L);
 }
@@ -376,31 +397,71 @@ function handle(c, m) {
     case 'rejoin': if (c.name) return; return rejoin(c, m.sid);
     case 'register': {
       if (limited(c.ip)) return send(c, { t: 'error', where: 'auth', msg: 'Too many tries. Wait a few minutes.' });
-      const name = String(m.name || '').trim(), pass = String(m.pass || '');
-      if (!NAME_RE.test(name)) return send(c, { t: 'error', where: 'auth', msg: 'Username: 3–16 letters, numbers or _' });
-      if (isGuestLike(name)) return send(c, { t: 'error', where: 'auth', msg: 'That looks like a guest name. Pick another.' });
+      // accounts are made with just an email address and a password; the racer name comes from the address (changeable later)
+      const email = String(m.email || '').trim(), pass = String(m.pass || '');
+      if (!EMAIL_RE.test(email)) return send(c, { t: 'error', where: 'auth', msg: 'Enter a valid email address.' });
       if (pass.length < 6 || pass.length > 72) return send(c, { t: 'error', where: 'auth', msg: 'Password: at least 6 characters.' });
-      const key = name.toLowerCase();
-      if (users[key] || online.has(key)) { failed(c.ip); return send(c, { t: 'error', where: 'auth', msg: 'That username is taken.' }); }
-      const salt = crypto.randomBytes(16).toString('hex');
-      users[key] = { name, salt, hash: hashPass(pass, salt), created: Date.now() }; save(USERS_FILE, users);
-      return authed(c, name, false, newSession(key));
+      const key = email.toLowerCase();
+      if (users[key]) { failed(c.ip); return send(c, { t: 'error', where: 'auth', msg: 'There is already an account with that email. Sign in instead.' }); }
+      const salt = crypto.randomBytes(16).toString('hex'), name = nameFromEmail(email);
+      users[key] = { name, email: key, salt, hash: hashPass(pass, salt), created: Date.now(), data: freshData() }; nameIndex.set(name.toLowerCase(), key); save(USERS_FILE, users);
+      return authed(c, name, false, newSession(key), key);
     }
     case 'login': {
       if (limited(c.ip)) return send(c, { t: 'error', where: 'auth', msg: 'Too many tries. Wait a few minutes.' });
-      const key = String(m.name || '').trim().toLowerCase(), u = users[key];
-      if (!u || !checkPass(String(m.pass || ''), u.salt, u.hash)) { failed(c.ip); return send(c, { t: 'error', where: 'auth', msg: 'Wrong username or password.' }); }
-      return authed(c, u.name, false, newSession(key));
+      const id = String(m.email || m.name || '').trim().toLowerCase(), key = users[id] ? id : nameIndex.get(id), u = key && users[key];   // email (or an older account's username)
+      if (!u || !checkPass(String(m.pass || ''), u.salt, u.hash)) { failed(c.ip); return send(c, { t: 'error', where: 'auth', msg: 'Wrong email or password.' }); }
+      return authed(c, u.name, false, newSession(key), key);
     }
     case 'resume': {
       const s = sessions[String(m.token || '')];
-      if (!s || s.exp < Date.now() || !users[s.key]) return send(c, { t: 'error', where: 'resume', msg: 'Session expired. Log in again.' });
-      return authed(c, users[s.key].name, false, m.token);
+      if (!s || s.exp < Date.now() || !users[s.key]) return send(c, { t: 'error', where: 'resume', msg: 'Session expired. Sign in again.' });
+      return authed(c, users[s.key].name, false, m.token, s.key);
     }
     case 'logout': {
       if (m.token && sessions[m.token]) { delete sessions[m.token]; save(SESS_FILE, sessions); }
-      leaveLobby(c); if (c.name) online.delete(c.name.toLowerCase()); c.name = null;
+      leaveLobby(c); if (c.name) online.delete(c.name.toLowerCase()); c.name = null; c.key = null;
       return send(c, { t: 'loggedout' });
+    }
+    // ---- account (signed-in players only)
+    case 'profile': return sendProfile(c);
+    case 'sync': {   // best times: keep the faster of what we have and what the game sends
+      const u = c.key && users[c.key]; if (!u || !m.best || typeof m.best !== 'object') return;
+      let ch = false;
+      for (const k of Object.keys(m.best).slice(0, 64)) {
+        const v = +m.best[k]; if (!/^[a-z]{2,16}(-survival)?$/.test(k) || !isFinite(v) || v < 15 || v > 3600) continue;
+        if (!u.data.best[k] || v < u.data.best[k]) { u.data.best[k] = Math.round(v * 1000) / 1000; ch = true; }
+      }
+      if (ch) save(USERS_FILE, users);
+      return sendProfile(c);
+    }
+    case 'career': {   // the career mode's saved progress (kept as the game sends it, up to 16 KB)
+      const u = c.key && users[c.key]; if (!u || !m.data || typeof m.data !== 'object') return;
+      const js = JSON.stringify(m.data); if (js.length > 16384) return send(c, { t: 'error', where: 'account', msg: 'Career data too large.' });
+      u.data.career = JSON.parse(js); save(USERS_FILE, users); return sendProfile(c);
+    }
+    case 'unlock': {   // cars unlocked so far (null = all of them)
+      const u = c.key && users[c.key]; if (!u) return;
+      u.data.unlocked = Array.isArray(m.cars) ? [...new Set(m.cars.map(x => clean(x, 24)).filter(Boolean))].slice(0, 200) : null;
+      save(USERS_FILE, users); return sendProfile(c);
+    }
+    case 'rename': {
+      const u = c.key && users[c.key]; if (!u) return send(c, { t: 'error', where: 'account', msg: 'Sign in first.' });
+      const n = String(m.name || '').trim();
+      if (!NAME_RE.test(n)) return send(c, { t: 'error', where: 'account', msg: 'Racer name: 3–16 letters, numbers or _' });
+      if (!nameFree(n, c.key)) return send(c, { t: 'error', where: 'account', msg: 'That racer name is taken.' });
+      nameIndex.delete(u.name.toLowerCase()); if (online.get(u.name.toLowerCase()) === c) online.delete(u.name.toLowerCase());
+      u.name = n; nameIndex.set(n.toLowerCase(), c.key); save(USERS_FILE, users);
+      c.name = n; online.set(n.toLowerCase(), c); if (c.lobby) pushLobby(c.lobby);
+      send(c, { t: 'auth', name: n, guest: false, token: null, sid: c.sid, email: u.email || null }); return sendProfile(c);
+    }
+    case 'password': {
+      const u = c.key && users[c.key]; if (!u) return send(c, { t: 'error', where: 'account', msg: 'Sign in first.' });
+      if (limited(c.ip)) return send(c, { t: 'error', where: 'account', msg: 'Too many tries. Wait a few minutes.' });
+      if (!checkPass(String(m.old || ''), u.salt, u.hash)) { failed(c.ip); return send(c, { t: 'error', where: 'account', msg: 'Current password is wrong.' }); }
+      const np = String(m.pass || ''); if (np.length < 6 || np.length > 72) return send(c, { t: 'error', where: 'account', msg: 'New password: at least 6 characters.' });
+      u.salt = crypto.randomBytes(16).toString('hex'); u.hash = hashPass(np, u.salt); save(USERS_FILE, users);
+      return send(c, { t: 'info', where: 'account', msg: 'Password changed.' });
     }
   }
   if (!c.name) return send(c, { t: 'error', where: 'auth', msg: 'Sign in first.' });
@@ -493,7 +554,7 @@ wss.on('connection', (ws, req) => {
   ws.on('close', (code, reason) => {
     if (process.env.PHD_DEBUG) console.log('close', c.name, code, String(reason || ''), c.lobby && c.lobby.state);
     clients.delete(c);
-    if (c.sid && c.name) parked.set(c.sid, { name: c.name, guest: c.guest, car: c.car, lobbyId: c.lobby && c.lobby.id, until: Date.now() + PARK_MS });
+    if (c.sid && c.name) parked.set(c.sid, { name: c.name, key: c.key, guest: c.guest, car: c.car, lobbyId: c.lobby && c.lobby.id, until: Date.now() + PARK_MS });
     leaveLobby(c); if (c.name && online.get(c.name.toLowerCase()) === c) online.delete(c.name.toLowerCase());
   });
 });
