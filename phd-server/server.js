@@ -94,7 +94,7 @@ const BOT_NAMES = ['Momo', 'Bram', 'Tilly', 'Kenji', 'Rosa', 'Lars', 'Ines', 'Da
   ...'Nico Ada Theo Lina Otto Zara Finn Ivy Hugo Nora Axel Mila Remy Suki Joel Pia Ravi Elsa Tomas Wren Aiko Bo Cleo Diego Esme Felix Greta Hal Iris Jonah Kaia Leon Mira Nils Opal Pavel Quinn Rhea'.split(' ')];
 const BOT_PAINTS = ['#f2c230', '#1f5fd6', '#f0f0ea', '#1f8a4c', '#ef6a1a', '#aeb5bf', '#0f2e5a', '#6a1b24', '#7fbf3a', '#3b3f47', '#c8231f'];
 function hsl2hex(h, s, l) { const f = n => { const k = (n + h * 12) % 12, a = s * Math.min(l, 1 - l), c = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); return Math.round(c * 255).toString(16).padStart(2, '0'); }; return '#' + f(0) + f(8) + f(4); }
-function makeBots(n) { return BOT_NAMES.slice(0, n).map((nm, k) => ({ name: nm, car: { design: (k * 5 + 1) % 6, paint: k < BOT_PAINTS.length ? BOT_PAINTS[k] : hsl2hex((k * 0.61803) % 1, 0.6, 0.45), rim: (k * 7) % 6, fin: (k * 3) % 6 } })); }
+function makeBots(n) { return BOT_NAMES.slice(0, n).map((nm, k) => ({ name: nm, car: { design: (k * 5 + 1) % 25, paint: k < BOT_PAINTS.length ? BOT_PAINTS[k] : hsl2hex((k * 0.61803) % 1, 0.6, 0.45), rim: (k * 7) % 6, fin: (k * 3) % 6 } }   /* any of the 25 pack bodies */)); }
 const botsFor = (L, humans) => L.bots ? L.botPool.slice(0, Math.max(0, L.max - humans)) : [];
 function makeLobby(opts) {
   const surv = opts.mode === 'survival', max = surv ? SURV_PLAYERS : MAX_PLAYERS;
@@ -437,7 +437,7 @@ function handle(c, m) {
     case 'st': return onState(c, m.s);
     case 'fin': return onFinish(c, m.time, Number.isInteger(m.bot) && m.bot < 0 ? m.bot : null);
     case 'bst': return onBotStates(c, m.s);
-    case 'bots': { const L = c.lobby; if (!L || L.host !== c.id) return; L.bots = L.mode === 'survival' || !!m.on; checkAutoStart(L); pushLobby(L); return; }   // Survival is always 50 cars
+    case 'bots': { const L = c.lobby; if (!L || L.host !== c.id) return; L.bots = !!m.on; checkAutoStart(L); pushLobby(L); return; }   // Survival starts with AI on, but the host can race friends only
     case 'vote': return onVote(c, m.track);
     case 'hit': {                                           // a bump: pass the push on to the car that was hit
       const L = c.lobby; if (!L || L.state !== 'race' || !L.race.racers.has(c.id)) return;
