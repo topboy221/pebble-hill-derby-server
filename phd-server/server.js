@@ -1,8 +1,8 @@
 // Pebble Hill Derby — multiplayer server
-// One Node process: serves the game page, handles accounts (guest, or email + password; each account keeps
-// its racer name, best times per track, unlocked cars and career progress in DATA_DIR/users.json),
-// lobbies (up to 12 racers, public quick-join or password-protected private servers),
+// One Node process: serves the game page, signs players in (as a guest, or with their Supabase account),
+// lobbies (up to 12 racers, or 50 in Survival; public quick-join or password-protected private servers),
 // relays car positions during races, collects results and runs the next-track vote.
+// Accounts, emails and saved progress live in Supabase; purchases come in from RevenueCat (/hooks/revenuecat).
 'use strict';
 const http = require('http');
 const fs = require('fs');
@@ -11,7 +11,6 @@ const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 
 const PORT = +process.env.PORT || 8080;
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 // the game page: public/pebble-hill-derby.html (an older public/index.html still works as a fallback)
 const GAME_FILE = ['pebble-hill-derby.html', 'index.html'].map(f => path.join(__dirname, 'public', f)).find(f => fs.existsSync(f)) || path.join(__dirname, 'public', 'pebble-hill-derby.html');
 const TRACK_IDS = ['pebble', 'city', 'nomahe', 'tokiyama', 'whitecow', 'aloma', 'mesozon'];           // keep in sync with TRACKS in the game
@@ -30,34 +29,27 @@ if (process.env.PHD_FAST) Object.assign(TIMES, { readyWait: 3, vote: 30, afterVo
 const SNAP_MS = 50;                               // 20 position updates a second
 const RACE_IDLE_MS = 10000;                       // a racer whose car hasn't reported in this long (app switched away, phone locked, gone) is taken out of the race
 
-/* ---------------- storage (JSON files; swap for a database when you outgrow it) ---------------- */
-fs.mkdirSync(DATA_DIR, { recursive: true });
-const USERS_FILE = path.join(DATA_DIR, 'users.json');
-const SESS_FILE = path.join(DATA_DIR, 'sessions.json');
-const readJSON = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return {}; } };
-let users = readJSON(USERS_FILE);                 // account key (lower-case email; older accounts: lower-case username) -> {name, email, salt, hash, created, data}
-// account data kept for each player: best times per track/mode, unlocked cars (null = everything that's in the game), career progress (for the coming career mode)
-const freshData = () => ({ best: {}, unlocked: null, career: {} });
-for (const k in users) if (!users[k].data) users[k].data = freshData();
-const nameIndex = new Map();                      // lower-case display name -> account key (display names are unique)
-for (const k in users) nameIndex.set(users[k].name.toLowerCase(), k);
-let sessions = readJSON(SESS_FILE);               // token -> {key, exp}
-const saveTimers = {};
-function save(file, obj) {
-  clearTimeout(saveTimers[file]);
-  saveTimers[file] = setTimeout(() => {
-    const tmp = file + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(obj));
-    fs.renameSync(tmp, file);
-  }, 200);
+/* ---------------- Supabase (accounts) ---------------- */
+// The game signs players in with Supabase itself; this server only asks Supabase who a player is (their racer name).
+// Settings (Render → Environment):
+//   SUPABASE_URL              https://<project>.supabase.co
+//   SUPABASE_PUBLISHABLE_KEY  the publishable (or legacy anon) key: the same one that's in the game
+//   SUPABASE_SECRET_KEY       the secret (or legacy service_role) key: only for recording purchases. Never put it in the game.
+const SB_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+const SB_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '';
+const SB_SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+async function sbWho(token) {   // a player's access token -> {id, name}, or null if it isn't valid (any more)
+  const h = { apikey: SB_KEY, Authorization: 'Bearer ' + token };
+  const u = await fetch(SB_URL + '/auth/v1/user', { headers: h, signal: AbortSignal.timeout(8000) });
+  if (u.status === 401 || u.status === 403 || u.status === 404) return null;
+  if (!u.ok) throw new Error('auth ' + u.status);
+  const user = await u.json(); if (!user || !user.id) return null;
+  const p = await fetch(SB_URL + '/rest/v1/rpc/get_profile', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, h), body: '{}', signal: AbortSignal.timeout(8000) });
+  if (!p.ok) throw new Error('profile ' + p.status + ' ' + (await p.text()).slice(0, 200));
+  const prof = await p.json();
+  return prof && prof.racer_name ? { id: user.id, name: String(prof.racer_name) } : null;
 }
-const SESSION_DAYS = 30;
-function newSession(key) {
-  const token = crypto.randomBytes(24).toString('hex');
-  sessions[token] = { key, exp: Date.now() + SESSION_DAYS * 864e5 };
-  save(SESS_FILE, sessions);
-  return token;
-}
+// private-server passwords
 function hashPass(pass, salt) { return crypto.scryptSync(pass, salt, 64).toString('hex'); }
 function checkPass(pass, salt, hash) {
   const a = Buffer.from(hashPass(pass, salt), 'hex'), b = Buffer.from(hash, 'hex');
@@ -65,7 +57,6 @@ function checkPass(pass, salt, hash) {
 }
 
 /* ---------------- names ---------------- */
-const NAME_RE = /^[A-Za-z0-9_]{3,16}$/;
 const ADJ = ['Zippy', 'Rusty', 'Turbo', 'Lucky', 'Swift', 'Mighty', 'Sneaky', 'Jolly', 'Brave', 'Sunny', 'Dusty', 'Nifty', 'Bouncy', 'Gritty', 'Plucky', 'Speedy'];
 const ANIMAL = ['Otter', 'Badger', 'Falcon', 'Gecko', 'Panda', 'Moose', 'Ferret', 'Lynx', 'Koala', 'Beaver', 'Heron', 'Marmot', 'Puffin', 'Wombat', 'Yak', 'Hare'];
 const online = new Map();                         // lower-case name -> client
@@ -73,26 +64,11 @@ function guestName() {
   for (let k = 0; k < 200; k++) {
     const n = ADJ[Math.random() * ADJ.length | 0] + ANIMAL[Math.random() * ANIMAL.length | 0] + (10 + (Math.random() * 90 | 0));
     const key = n.toLowerCase();
-    if (!users[key] && !online.has(key)) return n;
+    if (!online.has(key)) return n;
   }
   return 'Racer' + crypto.randomBytes(3).toString('hex');
 }
-const isGuestLike = (n) => ADJ.some(a => n.toLowerCase().startsWith(a.toLowerCase())) && ANIMAL.some(a => n.toLowerCase().includes(a.toLowerCase()));
-const EMAIL_RE = /^[^\s@<>]{1,64}@[^\s@<>]{1,190}\.[A-Za-z]{2,24}$/;
-const nameFree = (n, key) => { const k = n.toLowerCase(), o = nameIndex.get(k); return (!o || o === key) && !isGuestLike(n) && (!online.has(k) || (online.get(k).key === key && key)); };
-function nameFromEmail(email) {   // a racer name from the address: "ivan.r@x.com" -> "ivan_r", made unique with a number if needed
-  let b = email.split('@')[0].replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 12) || 'racer';
-  if (b.length < 3) b = (b + 'racer').slice(0, 5);
-  if (nameFree(b)) return b;
-  for (let k = 0; k < 500; k++) { const n = b.slice(0, 12) + (k < 98 ? 2 + k : 100 + (Math.random() * 9000 | 0)); if (nameFree(n)) return n; }
-  return 'racer' + crypto.randomBytes(3).toString('hex');
-}
-function sendProfile(c) {   // what the game shows on the Account screen and syncs locally
-  const u = c.key && users[c.key]; if (!u) return;
-  send(c, { t: 'profile', name: u.name, email: u.email || null, created: u.created, data: u.data });
-}
-
-/* ---------------- login rate limit ---------------- */
+/* ---------------- rate limit (sign-in tries, private-server passwords) ---------------- */
 const attempts = new Map();                       // ip -> [timestamps]
 function limited(ip) {
   const now = Date.now(), arr = (attempts.get(ip) || []).filter(t => now - t < 5 * 60e3);
@@ -100,6 +76,8 @@ function limited(ip) {
   return arr.length >= 12;
 }
 function failed(ip) { const arr = attempts.get(ip) || []; arr.push(Date.now()); attempts.set(ip, arr); }
+const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+const sameHash = (a, b) => a && b && a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 /* ---------------- lobbies ---------------- */
 const lobbies = new Map();                        // id -> lobby
@@ -358,16 +336,16 @@ function validCar(o) {
   const i = (v, m) => Number.isInteger(v) && v >= 0 && v < m ? v : 0;
   return { design: i(o.design, 32), paint: /^#[0-9a-f]{6}$/i.test(o.paint) ? o.paint : '#c8231f', rim: i(o.rim, 32), fin: i(o.fin, 32), rs: Number.isInteger(o.rs) && o.rs >= 13 && o.rs <= 22 ? o.rs : 18, off: Number.isInteger(o.off) && o.off >= 0 && o.off <= 16 ? o.off : 0, rh: Number.isInteger(o.rh) && Math.abs(o.rh) <= 3 ? o.rh : 0 };   // rs: rim size in inches
 }
-function authed(c, name, guest, token, acct) {
+function authed(c, name, guest, uid) {
   const key = name.toLowerCase();
-  c.key = guest ? null : (acct || nameIndex.get(key) || null);
+  c.key = guest ? null : (uid || null);            // the Supabase user id of a signed-in player
   const prev = online.get(key);
   if (prev && prev !== c) { send(prev, { t: 'kicked', msg: 'Signed in somewhere else.' }); leaveLobby(prev); prev.name = null; prev.ws.close(); }
-  if (c.name) online.delete(c.name.toLowerCase());
+  if (c.name && online.get(c.name.toLowerCase()) === c) online.delete(c.name.toLowerCase());
   c.name = name; c.guest = guest; online.set(key, c);
   if (!c.sid) c.sid = crypto.randomBytes(12).toString('hex');       // lets this player take their seat back after a dropped connection
-  send(c, { t: 'auth', name, guest, token: token || null, sid: c.sid, email: c.key && users[c.key] ? users[c.key].email || null : null });
-  if (c.key) sendProfile(c);
+  send(c, { t: 'auth', name, guest, sid: c.sid, uid: c.key });
+  if (c.lobby) pushLobby(c.lobby);                  // (a new racer name shows up in the lobby straight away)
 }
 // players whose connection dropped (phone locked, network switch): their name + lobby are kept for a while so they can rejoin
 const parked = new Map();                          // sid -> {name, guest, car, lobbyId, until}
@@ -382,10 +360,9 @@ function rejoin(c, sid) {
   }
   const P = parked.get(sid); parked.delete(sid);
   if (!P || P.until < Date.now()) return send(c, { t: 'error', where: 'rejoin', msg: 'Session over.' });
-  if (!P.guest && !users[P.key || nameIndex.get(P.name.toLowerCase())]) return send(c, { t: 'error', where: 'rejoin', msg: 'Session over.' });
   c.sid = sid; c.car = P.car || c.car;
   if (P.guest && online.has(P.name.toLowerCase())) return send(c, { t: 'error', where: 'rejoin', msg: 'Name in use.' });
-  authed(c, P.name, P.guest, null, P.key);
+  authed(c, P.name, P.guest, P.key);
   const L = P.lobbyId && lobbies.get(P.lobbyId);
   if (L && L.players.length < L.max) joinLobby(c, L);
 }
@@ -395,73 +372,23 @@ function handle(c, m) {
     case 'ping': return send(c, { t: 'pong', c: +m.c || 0, s: Date.now() });   // round-trip time + server clock, for syncing
     case 'guest': if (c.lobby) return; return authed(c, guestName(), true);
     case 'rejoin': if (c.name) return; return rejoin(c, m.sid);
-    case 'register': {
+    case 'sb': {   // sign in with a Supabase account: the game sends its access token, Supabase tells us who that is
+      if (!SB_URL || !SB_KEY) return send(c, { t: 'error', where: 'auth', msg: 'Accounts aren\'t switched on for this server yet. Race as a guest for now.' });
       if (limited(c.ip)) return send(c, { t: 'error', where: 'auth', msg: 'Too many tries. Wait a few minutes.' });
-      // accounts are made with just an email address and a password; the racer name comes from the address (changeable later)
-      const email = String(m.email || '').trim(), pass = String(m.pass || '');
-      if (!EMAIL_RE.test(email)) return send(c, { t: 'error', where: 'auth', msg: 'Enter a valid email address.' });
-      if (pass.length < 6 || pass.length > 72) return send(c, { t: 'error', where: 'auth', msg: 'Password: at least 6 characters.' });
-      const key = email.toLowerCase();
-      if (users[key]) { failed(c.ip); return send(c, { t: 'error', where: 'auth', msg: 'There is already an account with that email. Sign in instead.' }); }
-      const salt = crypto.randomBytes(16).toString('hex'), name = nameFromEmail(email);
-      users[key] = { name, email: key, salt, hash: hashPass(pass, salt), created: Date.now(), data: freshData() }; nameIndex.set(name.toLowerCase(), key); save(USERS_FILE, users);
-      return authed(c, name, false, newSession(key), key);
-    }
-    case 'login': {
-      if (limited(c.ip)) return send(c, { t: 'error', where: 'auth', msg: 'Too many tries. Wait a few minutes.' });
-      const id = String(m.email || m.name || '').trim().toLowerCase(), key = users[id] ? id : nameIndex.get(id), u = key && users[key];   // email (or an older account's username)
-      if (!u || !checkPass(String(m.pass || ''), u.salt, u.hash)) { failed(c.ip); return send(c, { t: 'error', where: 'auth', msg: 'Wrong email or password.' }); }
-      return authed(c, u.name, false, newSession(key), key);
-    }
-    case 'resume': {
-      const s = sessions[String(m.token || '')];
-      if (!s || s.exp < Date.now() || !users[s.key]) return send(c, { t: 'error', where: 'resume', msg: 'Session expired. Sign in again.' });
-      return authed(c, users[s.key].name, false, m.token, s.key);
+      const token = String(m.token || ''); if (!token || token.length > 8192) return;
+      sbWho(token).then(who => {
+        if (c.ws.readyState !== 1) return;
+        if (!who) { failed(c.ip); return send(c, { t: 'error', where: 'sb', msg: 'Your sign-in has expired. Sign in again.' }); }
+        authed(c, who.name, false, who.id);
+      }).catch(e => {
+        console.error('[supabase] ' + e.message);
+        send(c, { t: 'error', where: 'auth', msg: 'The account server didn\'t answer. Try again, or race as a guest.' });
+      });
+      return;
     }
     case 'logout': {
-      if (m.token && sessions[m.token]) { delete sessions[m.token]; save(SESS_FILE, sessions); }
-      leaveLobby(c); if (c.name) online.delete(c.name.toLowerCase()); c.name = null; c.key = null;
+      leaveLobby(c); if (c.name && online.get(c.name.toLowerCase()) === c) online.delete(c.name.toLowerCase()); c.name = null; c.key = null;
       return send(c, { t: 'loggedout' });
-    }
-    // ---- account (signed-in players only)
-    case 'profile': return sendProfile(c);
-    case 'sync': {   // best times: keep the faster of what we have and what the game sends
-      const u = c.key && users[c.key]; if (!u || !m.best || typeof m.best !== 'object') return;
-      let ch = false;
-      for (const k of Object.keys(m.best).slice(0, 64)) {
-        const v = +m.best[k]; if (!/^[a-z]{2,16}(-survival)?$/.test(k) || !isFinite(v) || v < 15 || v > 3600) continue;
-        if (!u.data.best[k] || v < u.data.best[k]) { u.data.best[k] = Math.round(v * 1000) / 1000; ch = true; }
-      }
-      if (ch) save(USERS_FILE, users);
-      return sendProfile(c);
-    }
-    case 'career': {   // the career mode's saved progress (kept as the game sends it, up to 16 KB)
-      const u = c.key && users[c.key]; if (!u || !m.data || typeof m.data !== 'object') return;
-      const js = JSON.stringify(m.data); if (js.length > 16384) return send(c, { t: 'error', where: 'account', msg: 'Career data too large.' });
-      u.data.career = JSON.parse(js); save(USERS_FILE, users); return sendProfile(c);
-    }
-    case 'unlock': {   // cars unlocked so far (null = all of them)
-      const u = c.key && users[c.key]; if (!u) return;
-      u.data.unlocked = Array.isArray(m.cars) ? [...new Set(m.cars.map(x => clean(x, 24)).filter(Boolean))].slice(0, 200) : null;
-      save(USERS_FILE, users); return sendProfile(c);
-    }
-    case 'rename': {
-      const u = c.key && users[c.key]; if (!u) return send(c, { t: 'error', where: 'account', msg: 'Sign in first.' });
-      const n = String(m.name || '').trim();
-      if (!NAME_RE.test(n)) return send(c, { t: 'error', where: 'account', msg: 'Racer name: 3–16 letters, numbers or _' });
-      if (!nameFree(n, c.key)) return send(c, { t: 'error', where: 'account', msg: 'That racer name is taken.' });
-      nameIndex.delete(u.name.toLowerCase()); if (online.get(u.name.toLowerCase()) === c) online.delete(u.name.toLowerCase());
-      u.name = n; nameIndex.set(n.toLowerCase(), c.key); save(USERS_FILE, users);
-      c.name = n; online.set(n.toLowerCase(), c); if (c.lobby) pushLobby(c.lobby);
-      send(c, { t: 'auth', name: n, guest: false, token: null, sid: c.sid, email: u.email || null }); return sendProfile(c);
-    }
-    case 'password': {
-      const u = c.key && users[c.key]; if (!u) return send(c, { t: 'error', where: 'account', msg: 'Sign in first.' });
-      if (limited(c.ip)) return send(c, { t: 'error', where: 'account', msg: 'Too many tries. Wait a few minutes.' });
-      if (!checkPass(String(m.old || ''), u.salt, u.hash)) { failed(c.ip); return send(c, { t: 'error', where: 'account', msg: 'Current password is wrong.' }); }
-      const np = String(m.pass || ''); if (np.length < 6 || np.length > 72) return send(c, { t: 'error', where: 'account', msg: 'New password: at least 6 characters.' });
-      u.salt = crypto.randomBytes(16).toString('hex'); u.hash = hashPass(np, u.salt); save(USERS_FILE, users);
-      return send(c, { t: 'info', where: 'account', msg: 'Password changed.' });
     }
   }
   if (!c.name) return send(c, { t: 'error', where: 'auth', msg: 'Sign in first.' });
@@ -518,6 +445,35 @@ function handle(c, m) {
   }
 }
 
+/* ---------------- purchases: RevenueCat webhook -> Supabase ---------------- */
+// In RevenueCat → Integrations → Webhooks: URL https://<this server>/hooks/revenuecat, and an Authorization header
+// with the same value as the REVENUECAT_WEBHOOK_AUTH setting here. Every event goes to the database function rc_event
+// (supabase/schema.sql), which logs it and updates the player's purchases. Needs SUPABASE_URL and SUPABASE_SECRET_KEY.
+const RC_AUTH = process.env.REVENUECAT_WEBHOOK_AUTH || '';
+function revenuecatHook(req, res) {
+  const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+  const reply = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+  if (req.method !== 'POST') return reply(405, { error: 'POST only' });
+  if (!RC_AUTH || !SB_URL || !SB_SECRET) return reply(503, { error: 'Purchases aren\'t set up on this server (REVENUECAT_WEBHOOK_AUTH, SUPABASE_URL, SUPABASE_SECRET_KEY).' });
+  if (limited('rc:' + ip)) return reply(429, { error: 'Too many tries' });
+  const got = sha(String(req.headers.authorization || ''));
+  if (!sameHash(got, sha(RC_AUTH)) && !sameHash(got, sha('Bearer ' + RC_AUTH))) { failed('rc:' + ip); return reply(401, { error: 'Wrong authorization' }); }
+  let body = '', size = 0;
+  req.on('data', d => { size += d.length; if (size > 512 * 1024) req.destroy(); else body += d; });
+  req.on('end', async () => {
+    let ev; try { ev = JSON.parse(body); } catch (e) { return reply(400, { error: 'Bad JSON' }); }
+    try {
+      const r = await fetch(SB_URL + '/rest/v1/rpc/rc_event', { method: 'POST', signal: AbortSignal.timeout(20000),
+        headers: { apikey: SB_SECRET, Authorization: 'Bearer ' + SB_SECRET, 'Content-Type': 'application/json' }, body: JSON.stringify({ body: ev }) });
+      const txt = await r.text();
+      if (!r.ok) { console.error('[revenuecat] database said ' + r.status + ': ' + txt.slice(0, 300)); return reply(r.status === 400 ? 400 : 502, { error: 'Could not record the event' }); }
+      const out = JSON.parse(txt || 'null');
+      console.log('[revenuecat] ' + ((ev && ev.event && ev.event.type) || '?') + ' -> ' + out);
+      return reply(200, { ok: true, result: out });   // anything but 200 and RevenueCat tries again later
+    } catch (e) { console.error('[revenuecat] ' + e.message); return reply(502, { error: 'Could not reach the database' }); }
+  });
+}
+
 /* ---------------- http + websocket ---------------- */
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
@@ -531,7 +487,8 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
-  if (url === '/health') { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); return res.end(JSON.stringify({ ok: true, online: online.size, lobbies: lobbies.size })); }
+  if (url === '/hooks/revenuecat') return revenuecatHook(req, res);
+  if (url === '/health') { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); return res.end(JSON.stringify({ ok: true, online: online.size, lobbies: lobbies.size, accounts: !!(SB_URL && SB_KEY), purchases: !!(RC_AUTH && SB_URL && SB_SECRET) })); }
   res.writeHead(404); res.end('Not found');
 });
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
@@ -565,6 +522,5 @@ setInterval(() => {
   for (const ws of wss.clients) { try { ws.ping(); } catch (e) {} }        // keep-alive for proxies (a slow reply is not a reason to drop anyone)
   for (const [k, P] of parked) if (P.until < now) parked.delete(k);
 }, 5000);
-setInterval(() => { const now = Date.now(); let ch = false; for (const t in sessions) if (sessions[t].exp < now) { delete sessions[t]; ch = true; } if (ch) save(SESS_FILE, sessions); }, 3600e3);
 
 server.listen(PORT, () => console.log('Pebble Hill Derby server on http://localhost:' + PORT));
