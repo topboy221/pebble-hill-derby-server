@@ -68,7 +68,13 @@ button:focus-visible{outline:3px solid var(--sky);outline-offset:3px}
 .mm{display:flex;flex-direction:column;gap:10px}
 .modes{display:flex;gap:10px;margin-bottom:4px}
 .opts{gap:6px!important}.opts .glab{margin-top:6px}
-.volrow{display:flex;align-items:center;gap:12px;padding:10px 14px}.volrow input{flex:1;accent-color:var(--tomato);height:28px}.volrow b{font-variant-numeric:tabular-nums;min-width:3.2em;text-align:right}
+.volrow{display:flex;align-items:center;gap:12px;padding:10px 14px}
+.optpane{display:flex;flex-direction:column;gap:6px}.ctlstate{justify-content:space-between;font-weight:800;font-size:13px}.ctlstate .btn{font-size:13px;padding:5px 12px}.touch .keysbox{display:none}.keysbox .keys{margin:4px 0 0;line-height:1.9}
+#ctlEdit{z-index:20;background:linear-gradient(rgba(30,35,64,.8),rgba(30,35,64,.62));touch-action:none}
+#ctlEdit .pad{cursor:grab}#ctlEdit .pad.sel{outline:4px solid var(--sun);outline-offset:4px}#ctlEdit .pad.drag{cursor:grabbing;transform:scale(1.04)}
+.ctlbar{position:absolute;top:var(--st);left:0;right:0;margin:0 auto;width:max-content;display:flex;align-items:center;gap:6px;padding:6px 10px;max-width:calc(100% - 28px);box-sizing:border-box;flex-wrap:wrap;justify-content:center;z-index:2}
+.ctlbar .btn{padding:4px 11px;font-size:14px;box-shadow:0 3px 0 var(--ink)}.ctlbar .btn.go{font-size:16px;padding:4px 14px}.ctlbar input{width:min(22vw,160px);accent-color:var(--tomato)}#ctlSel{min-width:6.5em;font-size:13px}#ctlSizeV{min-width:2.8em;font-variant-numeric:tabular-nums;font-size:13px}
+.ctlhint{position:absolute;left:50%;transform:translateX(-50%);top:calc(var(--st) + 64px);margin:0;color:#fff;font-weight:800;font-size:13px;text-shadow:0 1px 3px rgba(0,0,0,.6);white-space:nowrap;pointer-events:none}.volrow input{flex:1;accent-color:var(--tomato);height:28px}.volrow b{font-variant-numeric:tabular-nums;min-width:3.2em;text-align:right}
 @media (max-height:440px){#options .modes .btn{padding:5px 12px;font-size:14px}#options .volrow{padding:5px 12px}}
 #options .mm{max-height:calc(100vh - var(--st) - var(--sb));overflow:auto;padding-bottom:6px}
 .modes .btn{flex:1;min-width:0}
@@ -78,6 +84,18 @@ button:focus-visible{outline:3px solid var(--sky);outline-offset:3px}
 .modes .btn[aria-pressed="true"] small{color:#fff}
 @media (max-height:440px){#tracks .mm{gap:7px}#tracks .mmb{padding:7px 14px;font-size:16px}#tracks .modes .btn{padding:5px 12px;font-size:14px}}
 #tracks .mm{max-height:calc(100vh - var(--st) - var(--sb));overflow:auto;padding-bottom:6px}
+#career .mm{max-height:calc(100vh - var(--st) - var(--sb));overflow:auto;padding-bottom:6px;gap:9px}
+.crow{padding:9px 12px;display:flex;flex-direction:column;gap:5px}.crow.locked{opacity:.62;background:#eef2f7}
+.crow h3{margin:0;font-family:'Rammetto One','Arial Black',sans-serif;font-weight:400;font-size:17px;text-transform:uppercase;letter-spacing:.02em;display:flex;align-items:center;gap:6px}
+.crow .cst{margin:0;font-weight:800;font-size:12px;color:#4a5170}.crow .cb{display:flex;gap:8px;flex-wrap:wrap}.crow .cb .btn{font-size:13px;padding:5px 11px}.crow .cb .btn.go{font-size:15px;padding:5px 12px}
+.cmed{width:20px;height:20px;flex:none}
+.cres{display:flex;align-items:center;gap:5px;flex-wrap:wrap}.clab{font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#4a5170;margin-right:1px}.clab.sv{margin-left:10px}
+.cc{width:30px;height:30px;border-radius:50%;border:2.5px solid var(--ink);display:grid;place-items:center;font-weight:800;font-size:10.5px;letter-spacing:-.02em;background:#fff;box-sizing:border-box;flex:none;color:var(--ink)}
+.cc.fin{width:36px;height:36px;border-width:3px;font-size:12px}.cc .cmed{width:19px;height:19px}.cc.fin .cmed{width:23px;height:23px}.cc svg{width:16px;height:16px}
+.cc.cempty{border-style:dashed;border-color:#9aa3bd;color:#9aa3bd;background:transparent}.cc.next{border-color:var(--ink);border-style:dashed}
+.cc.p1{background:#fff3c4}.cc.p2{background:#eef1f5}.cc.p3{background:#f8e3d2}.csep{font-weight:800;color:#4a5170;font-size:15px}.cnote{padding:8px 12px;font-weight:800;font-size:13px;background:#fff3c4}.crow .cb .btn:disabled{opacity:.55;box-shadow:0 2px 0 var(--ink)}.cprog{display:flex;flex-direction:column;gap:5px;min-width:15em}.cprog .cpt{font-size:13px}.cprog .bar b{background:var(--sun)}
+tr.hd td{font-size:11px;color:#4a5170;text-transform:uppercase;letter-spacing:.05em;border-bottom-style:solid}
+@media (max-height:440px){#career .hero{gap:7px}.crow h3{font-size:15px}}
 .ib.off{opacity:.35}
 #resetBtn{position:relative}
 #resetBtn.cd::after{content:'';position:absolute;inset:-3px;border-radius:12px;background:conic-gradient(rgba(30,35,64,.55) var(--cd),transparent 0);pointer-events:none}
@@ -96,6 +114,10 @@ button:focus-visible{outline:3px solid var(--sky);outline-offset:3px}
 .sw .custom{position:relative;overflow:hidden;background:conic-gradient(#e33,#fc3,#3c6,#39f,#93f,#e33)}
 .sw .custom input{position:absolute;inset:-6px;width:calc(100% + 12px);height:calc(100% + 12px);opacity:0;cursor:pointer;border:0;padding:0}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
+.rimstrip{display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;touch-action:pan-x;scroll-snap-type:x proximity;padding:3px 3px 9px;scrollbar-width:thin;cursor:grab}
+.rimstrip button{flex:none;width:72px;height:72px;border-radius:16px;border:3px solid var(--ink);background:#fff;padding:3px;box-shadow:0 3px 0 var(--ink);scroll-snap-align:start;cursor:pointer}
+.rimstrip button canvas{width:100%;height:100%;display:block;border-radius:11px;pointer-events:none}
+.rimstrip button[aria-pressed="true"]{background:var(--sun);outline:3px solid var(--ink);outline-offset:1px}
 .rimsz{display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:800;font-size:12px}.rimsz>span{min-width:3.6em}.rimsz input{flex:1;min-width:60px;accent-color:var(--tomato)}
 .rimsz .btn{padding:0 8px;font-size:16px;line-height:22px;border-radius:8px;box-shadow:0 2px 0 var(--ink);border-width:2px}.rimsz b{min-width:2.4em;text-align:right;font-variant-numeric:tabular-nums}
 .chips button{border:2px solid var(--ink);border-radius:10px;background:#fff;font-weight:800;font-size:12px;padding:4px 9px;box-shadow:0 2px 0 var(--ink)}
@@ -114,6 +136,7 @@ input:focus{outline:3px solid var(--sky);outline-offset:1px}
 .mpsmall{display:flex;gap:8px;flex-wrap:wrap}
 #home .acctbtn{position:absolute;top:var(--st);right:var(--sr);width:46px;height:46px;border-radius:50%}
 #home .acctbtn svg{width:26px;height:26px}
+#home .fsbtn{position:absolute;top:var(--st);left:var(--sl);width:40px;height:40px;border-radius:12px;z-index:3}#home .fsbtn svg{width:22px;height:22px}
 #home .acctbtn i{position:absolute;right:-2px;bottom:-2px;width:14px;height:14px;border-radius:50%;border:2.5px solid var(--ink);background:#c9cfdb;display:none}
 #home .acctbtn.on i{display:block;background:#3fae5a}
 #account .mm{max-height:calc(100vh - var(--st) - var(--sb));overflow:auto;padding-bottom:6px}
@@ -156,6 +179,7 @@ input:focus{outline:3px solid var(--sky);outline-offset:1px}
 .tl{position:absolute;top:var(--st);left:var(--sl)}
 #pos{font-size:42px;line-height:1}
 #pos sup{font-size:.45em;vertical-align:.9em;margin-left:2px}
+.tl{display:flex;flex-direction:column;align-items:flex-start}.sub.tm{font-size:15px;margin-top:4px}
 .sub{font-weight:800;font-size:14px;margin-top:6px;background:rgba(255,255,255,.88);border:2px solid var(--ink);border-radius:10px;padding:1px 8px;display:inline-block;font-variant-numeric:tabular-nums}
 .tc{position:absolute;top:var(--st);left:50%;transform:translateX(-50%);width:min(24vw,230px);padding:2px 5px 1px;border-radius:11px;border-width:2px;box-shadow:none;background:rgba(255,255,255,.42);border-color:rgba(30,35,64,.55);pointer-events:none}   /* compact and see-through: the road shows through it */
 #prof{display:block;width:100%;height:28px}
@@ -189,7 +213,7 @@ input:focus{outline:3px solid var(--sky);outline-offset:1px}
 .pad.l{left:var(--sl);bottom:calc(var(--sb) + 8px);width:118px;height:118px}
 .pad.r{left:calc(var(--sl) + 140px);bottom:calc(var(--sb) + 8px);width:118px;height:118px}
 .pad.look{left:var(--sl);bottom:calc(var(--sb) + 150px);width:81px;height:81px}
-.pad.look svg{width:58%;height:58%}
+.pad.look svg{width:64%;height:64%}
 .pad.brake{right:var(--sr);bottom:calc(var(--sb) + 8px);width:129px;height:129px;background:rgba(255,160,150,.95)}
 .pad.drift{right:calc(var(--sr) + 151px);bottom:calc(var(--sb) + 14px);width:101px;height:101px;background:rgba(170,225,255,.95)}
 .pad.push{left:50%;margin-left:-73px;bottom:calc(var(--sb) + 8px);width:146px;height:146px;background:var(--sun);font-family:'Rammetto One','Arial Black',sans-serif;font-weight:400;font-size:24px}
@@ -276,6 +300,7 @@ tr.me td{background:#fff3c4}
       <button class="btn mmb" data-go="garage">Garage</button>
       <button class="btn mmb" data-go="options">Options</button>
     </nav>
+    <button class="ib fsbtn" id="fsBtn" aria-label="Full screen" title="Full screen (testing)"><svg viewBox="0 0 20 20"><path d="M3 7.5V3h4.5M12.5 3H17v4.5M17 12.5V17h-4.5M7.5 17H3v-4.5" fill="none" stroke="#1e2340" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <button class="ib acctbtn" id="acctBtn" data-go="account" aria-label="Account"><svg viewBox="0 0 20 20"><circle cx="10" cy="7" r="3.6" fill="none" stroke="#1e2340" stroke-width="2.4"/><path d="M3.5 17.5c.8-3.4 3.4-5.2 6.5-5.2s5.7 1.8 6.5 5.2" fill="none" stroke="#1e2340" stroke-width="2.4" stroke-linecap="round"/></svg><i></i></button>
   </div>
 
@@ -290,20 +315,17 @@ tr.me td{background:#fff3c4}
   <div id="single" class="screen menu fs" hidden>
     <div class="hero">
       <div class="hdr"><button class="btn back" data-go="home" aria-label="Back"><svg viewBox="0 0 20 20" width="18" height="18"><path d="M13 3 5 10l8 7" fill="none" stroke="#1e2340" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button><h2 class="disp stroke big">Single player</h2></div>
-      <p id="best" class="tag"></p>
-      <p class="keys"><kbd>←</kbd><kbd>→</kbd> steer · <kbd>↓</kbd> brake · <kbd>Space</kbd> e-brake · <kbd>↑</kbd> push at start · <kbd>C</kbd> camera · hold <kbd>B</kbd> look back · <kbd>R</kbd> reset</p>
     </div>
     <nav class="mm">
       <button class="btn mmb go" id="quickBtn">Quick race<small>Random track, race 11 rivals</small></button>
       <button class="btn mmb" id="customBtn" data-go="tracks">Custom race<small>Pick your track</small></button>
-      <button class="btn mmb" disabled>Career<span class="soon">Coming soon</span></button>
+      <button class="btn mmb" id="careerBtn" data-go="career">Career<small id="careerSub">Win 3-race cups to unlock every track</small></button>
     </nav>
   </div>
 
   <div id="tracks" class="screen menu fs" hidden>
     <div class="hero">
       <div class="hdr"><button class="btn back" data-go="single" aria-label="Back"><svg viewBox="0 0 20 20" width="18" height="18"><path d="M13 3 5 10l8 7" fill="none" stroke="#1e2340" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button><h2 class="disp stroke big">Custom race</h2></div>
-      <p class="tag" id="trackBest"></p>
     </div>
     <nav class="mm">
       <div class="modes" role="group" aria-label="Game mode">
@@ -318,6 +340,14 @@ tr.me td{background:#fff3c4}
       <button class="btn mmb" data-track="aloma">Aloma<small>5.9 km volcano island · twin split · lava vent · rock field · lava boulders</small></button>
       <button class="btn mmb" data-track="mesozon">Mesozon<small>6.1 km rainforest in the rain · giant tree start · vines · leaf jumps · rope bridge</small></button>
     </nav>
+  </div>
+
+  <div id="career" class="screen menu fs" hidden>
+    <div class="hero">
+      <div class="hdr"><button class="btn back" data-go="single" aria-label="Back"><svg viewBox="0 0 20 20" width="18" height="18"><path d="M13 3 5 10l8 7" fill="none" stroke="#1e2340" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button><h2 class="disp stroke big">Career</h2></div>
+      <div class="tag cprog"><div class="cpt"><b id="careerPct">0%</b> complete</div><div class="bar"><b id="careerBar" style="width:0"></b></div></div>
+    </div>
+    <div class="mm" id="careerList"></div>
   </div>
 
   <div id="multi" class="screen menu fs" hidden>
@@ -346,6 +376,8 @@ tr.me td{background:#fff3c4}
       <p class="tag">Changes apply straight away and are saved on this device.</p>
     </div>
     <nav class="mm opts">
+      <div class="acct-tabs" id="optTabs" role="tablist"><button class="btn" data-otab="gen" aria-pressed="true">General</button><button class="btn" data-otab="ctl" aria-pressed="false">Controls</button></div>
+      <div class="optpane" id="optGen">
       <div class="glab">Units</div>
       <div class="modes" role="group" aria-label="Units">
         <button class="btn" data-opt="units" data-v="metric">Metric<small>km/h · metres</small></button>
@@ -363,6 +395,14 @@ tr.me td{background:#fff3c4}
         <button class="btn" data-opt="map" data-v="1">On<small>Course map with every car</small></button>
         <button class="btn" data-opt="map" data-v="0">Off<small>Hide it during races</small></button>
       </div>
+      </div>
+      <div class="optpane" id="optCtl" hidden>
+        <div class="glab">Touch buttons</div>
+        <button class="btn mmb go" id="ctlEditBtn">Move &amp; resize<small>Drag the buttons where your thumbs are and set their size</small></button>
+        <div class="card volrow ctlstate"><span id="ctlState">Default layout</span><button class="btn" id="ctlResetBtn">Reset</button></div>
+        <div class="keysbox"><div class="glab">Keyboard</div>
+        <p class="keys"><kbd>←</kbd><kbd>→</kbd> steer · <kbd>↓</kbd> brake · <kbd>Space</kbd> e-brake · <kbd>↑</kbd> push at start · <kbd>C</kbd> camera · hold <kbd>B</kbd> look back · <kbd>R</kbd> reset</p></div>
+      </div>
     </nav>
   </div>
 
@@ -379,9 +419,9 @@ tr.me td{background:#fff3c4}
       <div class="gsec"><div class="glab">Paint</div>
         <div class="sw" id="swatches" role="group" aria-label="Paint"></div>
       </div>
-      <div class="gsec"><div class="glab">Rims</div>
-        <div class="chips" id="rimStyles" role="group" aria-label="Rim style"></div>
-        <div class="sw sm" id="rimFins" role="group" aria-label="Rim finish"></div>
+      <div class="gsec"><div class="glab">Wheels</div>
+        <div class="rimstrip" id="rimStyles" role="group" aria-label="Wheel design"></div>
+        <div class="sw sm" id="rimFins" role="group" aria-label="Wheel colour"></div>
         <div class="rimsz"><span>Size</span><button class="btn" id="rimDown" aria-label="Smaller rims">−</button><input type="range" id="rimSize" min="13" max="22" step="1" aria-label="Rim size in inches"><button class="btn" id="rimUp" aria-label="Bigger rims">+</button><b id="rimSizeV">18"</b></div>
       </div>
       <div class="gsec"><div class="glab">Stance</div>
@@ -397,7 +437,7 @@ tr.me td{background:#fff3c4}
     <div id="speedfx"></div>
     <div class="tl">
       <div id="pos" class="disp stroke">6<sup>th</sup></div>
-      <div class="sub"><span id="posOf">of 12</span> · <span id="time">0:00.00</span></div>
+      <div class="sub tm"><span id="time">0:00.00</span></div>
     </div>
     <div class="tc card" id="minimap">
       <canvas id="prof"></canvas>
@@ -418,11 +458,24 @@ tr.me td{background:#fff3c4}
     <div id="ctl">
       <button class="pad l" data-k="left" aria-label="Steer left"><svg viewBox="0 0 20 20"><path d="M13 3 5 10l8 7" fill="none" stroke="#1e2340" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <button class="pad r" data-k="right" aria-label="Steer right"><svg viewBox="0 0 20 20"><path d="M7 3l8 7-8 7" fill="none" stroke="#1e2340" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-      <button class="pad look" data-k="back" aria-label="Look back"><svg viewBox="0 0 24 24"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z" fill="none" stroke="#1e2340" stroke-width="2.4"/><circle cx="12" cy="12" r="3.2" fill="#1e2340"/><path d="M7 21l-3-2.5L7 16" fill="none" stroke="#1e2340" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button class="pad look" data-k="back" aria-label="Look back"><svg viewBox="0 0 24 24"><rect x="7.3" y="1.6" width="9.4" height="5.8" rx="1.6" fill="#1e2340"/><circle cx="12" cy="4.5" r="1.9" fill="#fff"/><circle cx="12" cy="4.5" r="0.9" fill="#1e2340"/><path d="M5 22.6 8.7 10.2M19 22.6 15.3 10.2" fill="none" stroke="#1e2340" stroke-width="2.1" stroke-linecap="round"/><path d="M6.1 19h11.8" stroke="#e8453c" stroke-width="2.5" stroke-linecap="round"/><path d="M7.3 15h9.4" stroke="#f2b51d" stroke-width="2.5" stroke-linecap="round"/><path d="M8.3 11.6h7.4" stroke="#2fa25a" stroke-width="2.5" stroke-linecap="round"/></svg></button>
       <button class="pad drift" data-k="drift" aria-label="E-brake">E-BRAKE</button>
       <button class="pad brake" data-k="brake">BRAKE</button>
       <button class="pad push" data-k="push" id="pushBtn" hidden>PUSH!</button>
     </div>
+  </div>
+
+  <div id="ctlEdit" class="screen" hidden>
+    <div class="ctlbar card">
+      <b id="ctlSel">All buttons</b>
+      <button class="btn" id="ctlMinus" aria-label="Smaller">−</button>
+      <input type="range" id="ctlSize" min="60" max="170" step="5" aria-label="Button size">
+      <button class="btn" id="ctlPlus" aria-label="Bigger">+</button>
+      <b id="ctlSizeV">100%</b>
+      <button class="btn" id="ctlReset">Reset</button>
+      <button class="btn go" id="ctlDone">Done</button>
+    </div>
+    <p class="ctlhint" id="ctlHint">Drag a button to move it · tap one to resize only that button</p>
   </div>
 
   <div id="pause" class="screen modal" hidden>
@@ -488,7 +541,9 @@ const CAR_PHYS={mass:1400,cda:0.62,grip:1.03,wd:0.53,izf:1.0,roll:0.8};
 DESIGNS.forEach(d=>Object.assign(d,CAR_PHYS));
 const CAR_W=1.86;
 const PAINTS=['#c8231f','#f2c230','#1f5fd6','#f0f0ea','#1d1e24','#1f8a4c','#ef6a1a','#aeb5bf','#0f2e5a','#6a1b24','#7fbf3a','#3b3f47'];
-const RIMS=['5-spoke','Multi-spoke','Mesh','Deep dish','Steelie','Turbine'];
+const RIMS=['5-spoke','Multi-spoke','Mesh','Deep dish','Steelie','Turbine',
+  'Petal','Tri-spoke','Luxe dish','Classic five','Twin six','Y-five','Sweep','Slotted','Lattice','Seven',
+  'Three-piece','Aero','Rally eight','Y-ten','Six','Concave','Four','Wire','Moon','Nine'];
 const RIM_FINS=[{n:'Silver',c:0xc4c9d0,m:0.9,r:0.28},{n:'Gunmetal',c:0x4b5059,m:0.85,r:0.35},{n:'Black',c:0x1d1e23,m:0.5,r:0.45},{n:'Gold',c:0xc9a24a,m:1,r:0.3},{n:'White',c:0xeeeeea,m:0.2,r:0.35},{n:'Bronze',c:0x8a5a33,m:0.9,r:0.35}];
 const RIVALS=[{name:'Momo',num:3},{name:'Bram',num:12},{name:'Tilly',num:21},{name:'Kenji',num:44},{name:'Rosa',num:88},{name:'Lars',num:5},{name:'Ines',num:9},{name:'Dario',num:17},{name:'Yuki',num:27},{name:'Olek',num:33},{name:'Maya',num:64}];
 // Survival brings 38 more to the hill (49 rivals in all)
@@ -2968,7 +3023,14 @@ const EXTRAS=[
 ];
 // rims: spokes merged into one mesh per wheel (cheap to draw), mirrored for the left side
 const rimMatCache=new Map();
-function rimMat(i){if(!rimMatCache.has(i)){const f=RIM_FINS[i];rimMatCache.set(i,std({color:f.c,metalness:f.m,roughness:f.r}));}return rimMatCache.get(i);}
+const isHex=v=>typeof v==='string'&&/^#[0-9a-f]{6}$/i.test(v);
+const rimCustom=[];   // custom rim colours in use (a handful at most: yours and other players')
+function rimMat(i){
+  if(isHex(i)){i=i.toLowerCase();if(!rimMatCache.has(i)){rimMatCache.set(i,std({color:new THREE.Color(i),metalness:0.75,roughness:0.3}));rimCustom.push(i);
+      if(rimCustom.length>24){const old=rimCustom.shift();if(old!==sel.fin){const m=rimMatCache.get(old);rimMatCache.delete(old);const k=STDS.indexOf(m);if(k>=0)STDS.splice(k,1);m.dispose();}}}
+    return rimMatCache.get(i);}
+  if(!RIM_FINS[i])i=0;
+  if(!rimMatCache.has(i)){const f=RIM_FINS[i];rimMatCache.set(i,std({color:f.c,metalness:f.m,roughness:f.r}));}return rimMatCache.get(i);}
 const TORUS_LIP=new THREE.TorusGeometry(0.285,0.03,8,28).rotateY(Math.PI/2),TORUS_DISH=new THREE.TorusGeometry(0.28,0.045,8,28).rotateY(Math.PI/2);
 function mergeParts(items){
   const pos=[],nor=[],idx=[];let off=0;const M=new THREE.Matrix4(),L=new THREE.Matrix4(),Q=new THREE.Quaternion(),E=new THREE.Euler();
@@ -2987,12 +3049,64 @@ function rimGeo(style){
   if(style===0)sp(5,0.2,0.07,0.03,0.14);
   else if(style===1)sp(10,0.23,0.035,0.025,0.135);
   else if(style===2){for(let k=0;k<8;k++)for(const t of [0.45,-0.45])rim.push({a:k*T/8,p:[F,0.14,0],s:[0.018,0.27,0.018],r:[t,0,0]});}
-  else if(style===3){for(let k=0;k<4;k++)rim.push({a:k*T/4+0.4,p:[F-0.045,0.1,0],s:[0.03,0.14,0.08]});rim.push({g:'cyl',p:[F-0.05,0,0],s:[0.2,0.015,0.2],r:[0,0,Math.PI/2]});}
+  else if(style===3){for(let k=0;k<4;k++)rim.push({a:k*T/4+0.4,p:[F-0.002,0.1,0],s:[0.03,0.14,0.08]});dark.push({g:'cyl',p:[F-0.008,0,0],s:[0.2,0.015,0.2],r:[0,0,Math.PI/2]});}
   else if(style===4){rim.push({g:'cyl',p:[F-0.005,0,0],s:[0.27,0.02,0.27],r:[0,0,Math.PI/2]});for(let k=0;k<6;k++)dark.push({g:'cyl',a:k*T/6,p:[F+0.008,0.175,0],s:[0.035,0.012,0.035],r:[0,0,Math.PI/2]});}
   else if(style===5)sp(12,0.2,0.06,0.018,0.15,{r:[0,0.55,0]});
+  // --- the 20 newer designs. Parts: p = [depth (out = bigger), distance from the hub, sideways], s = [thickness, length, width],
+  //     (the tyre is solid just behind F: anything deeper than ~F-0.005 disappears, so 'dished' looks come from the raised lip)
+  //     a = angle round the wheel, r = tilt. 'cyl' parts are discs/rings. dark[] parts are drawn black.
+  else{
+    const disc=(x,r,t,arr)=>(arr||rim).push({g:'cyl',p:[x,0,0],s:[r,t,r],r:[0,0,Math.PI/2]});
+    const ring=(n,y,r,x,arr,off)=>{for(let k=0;k<n;k++)(arr||dark).push({g:'cyl',a:k*T/n+(off||0),p:[x,y,0],s:[r,0.012,r],r:[0,0,Math.PI/2]});};
+    const each=(n,f)=>{for(let k=0;k<n;k++)f(k*T/n);};
+    switch(style){
+      case 6:   // petal: five broad forged petals on a black centre (classic 70s sports car)
+        disc(F-0.002,0.25,0.008,dark);
+        each(5,a=>{rim.push({a,p:[F,0.085,0],s:[0.032,0.13,0.115]});rim.push({a,p:[F+0.002,0.2,0],s:[0.028,0.12,0.078]});});break;
+      case 7:   // tri-spoke: three wide spokes
+        each(3,a=>{rim.push({a,p:[F,0.13,0],s:[0.034,0.24,0.1]});});break;
+      case 8:   // luxe dish: deep polished lip, fine mesh set far back (VIP style)
+        each(10,a=>{for(const t of [0.5,-0.5])rim.push({a,p:[F,0.1,0],s:[0.016,0.2,0.016],r:[t,0,0]});});break;
+      case 9:   // classic five: tapered spokes, wide at the hub (old-school American mag)
+        each(5,a=>{rim.push({a,p:[F,0.08,0],s:[0.034,0.11,0.095]});rim.push({a,p:[F-0.004,0.19,0],s:[0.03,0.14,0.05]});});break;
+      case 10:  // twin six: six pairs of thin spokes (Japanese lightweight racing wheel)
+        each(6,a=>{for(const d of [-0.11,0.11])rim.push({a:a+d,p:[F,0.14,0],s:[0.026,0.22,0.03]});});break;
+      case 11:  // Y-five: five spokes that split in two
+        each(5,a=>{rim.push({a,p:[F,0.08,0],s:[0.03,0.1,0.05]});for(const t of [0.32,-0.32])rim.push({a,p:[F,0.19,t*0.07],s:[0.028,0.13,0.035],r:[t,0,0]});});break;
+      case 12:  // sweep: ten slanted spokes
+        each(10,a=>{rim.push({a,p:[F,0.14,0],s:[0.024,0.22,0.04],r:[0.38,0,0]});});break;
+      case 13:  // slotted: flat disc with eight long slots
+        disc(F-0.004,0.262,0.02);each(8,a=>{dark.push({a,p:[F+0.006,0.175,0],s:[0.014,0.075,0.034]});});break;
+      case 14:  // lattice: cross-laced mesh with a ring of bolts (German motorsport mesh)
+        each(9,a=>{for(const t of [0.4,-0.4])rim.push({a,p:[F,0.14,0],s:[0.022,0.25,0.024],r:[t,0,0]});});ring(16,0.244,0.013,F+0.002);break;
+      case 15:  // seven: seven straight spokes
+        sp(7,0.21,0.05,0.028,0.14);break;
+      case 16:  // three-piece: deep lip, short spokes, rivets round the face
+        each(6,a=>{rim.push({a,p:[F+0.004,0.1,0],s:[0.03,0.14,0.06]});});disc(F-0.002,0.21,0.008,dark);ring(20,0.218,0.01,F+0.01,rim);break;
+      case 17:  // aero: covered disc with little fins
+        disc(F+0.004,0.255,0.02);each(12,a=>{dark.push({a,p:[F+0.012,0.18,0],s:[0.014,0.11,0.026],r:[0.5,0,0]});});break;
+      case 18:  // rally eight: flat disc with eight round holes
+        disc(F-0.004,0.262,0.02);ring(8,0.175,0.04,F+0.008);break;
+      case 19:  // Y-ten: ten slim Y spokes
+        each(10,a=>{rim.push({a,p:[F,0.07,0],s:[0.024,0.08,0.03]});for(const t of [0.22,-0.22])rim.push({a,p:[F,0.18,t*0.05],s:[0.02,0.15,0.018],r:[t,0,0]});});break;
+      case 20:  // six: six chunky straight spokes
+        sp(6,0.21,0.07,0.032,0.14);break;
+      case 21:  // concave: five spokes that dive towards the hub
+        each(5,a=>{rim.push({a,p:[F+0.02,0.15,0],s:[0.03,0.23,0.06],r:[0,0,-0.15]});});break;
+      case 22:  // four: four broad spokes and a big centre
+        each(4,a=>{rim.push({a,p:[F,0.15,0],s:[0.032,0.2,0.085]});});disc(F+0.004,0.11,0.02);break;
+      case 23:  // wire: classic laced spokes and a spinner
+        each(28,a=>{rim.push({a,p:[F+0.002,0.15,0],s:[0.008,0.27,0.008],r:[(Math.round(a/T*28)%2?0.3:-0.3),0,0]});});
+        disc(F+0.004,0.07,0.03);rim.push({p:[F+0.02,0,0],s:[0.02,0.17,0.03]});rim.push({p:[F+0.02,0,0],s:[0.02,0.03,0.17]});break;
+      case 24:  // moon: smooth chrome dome
+        disc(F+0.004,0.262,0.016);disc(F+0.016,0.21,0.016);disc(F+0.028,0.14,0.016);break;
+      case 25:  // nine: nine thin spokes
+        sp(9,0.22,0.035,0.024,0.14);break;
+    }
+  }
   rim.push({g:'cyl',p:[F+0.006,0,0],s:[0.075,0.02,0.075],r:[0,0,Math.PI/2]});
   dark.push({g:'cyl',p:[F+0.018,0,0],s:[0.03,0.01,0.03],r:[0,0,Math.PI/2]});
-  const o={rim:mergeParts(rim),dark:mergeParts(dark),lip:style===3?TORUS_DISH:TORUS_LIP};rimGeoCache.set(style,o);return o;
+  const o={rim:mergeParts(rim),dark:mergeParts(dark),lip:style===3||style===8||style===16?TORUS_DISH:TORUS_LIP};rimGeoCache.set(style,o);return o;
 }
 // rim size in inches (13-22): the tyre keeps its overall size, the rim grows into it and the sidewall gets thinner (18" = the original look)
 const RIM_MIN=13,RIM_MAX=22,RIM_DEF=18,rimSz=v=>Number.isInteger(v)&&v>=RIM_MIN&&v<=RIM_MAX?v:RIM_DEF;
@@ -3099,7 +3213,7 @@ function updateGarage(dt){
 const cars=[];
 let player=null,state='loading',raceT=0,countT=0,finishCount=0,camMode=0,paused=false,resultsShown=false,afterFinishT=0;
 let sel={design:0,paint:PAINTS[0],rim:0,fin:0,rs:RIM_DEF,off:0,rh:0};
-try{const s=JSON.parse(localStorage.getItem('phd-sel4')||'null');if(s&&DESIGNS[s.design]&&/^#[0-9a-f]{6}$/i.test(s.paint)&&RIMS[s.rim]&&RIM_FINS[s.fin]){sel=s;sel.rs=rimSz(s.rs);sel.off=Number.isInteger(s.off)&&s.off>=0&&s.off<=16?s.off:0;sel.rh=Number.isInteger(s.rh)&&Math.abs(s.rh)<=3?s.rh:0;}}catch(e){}
+try{const s=JSON.parse(localStorage.getItem('phd-sel4')||'null');if(s&&DESIGNS[s.design]&&/^#[0-9a-f]{6}$/i.test(s.paint)&&RIMS[s.rim]&&(RIM_FINS[s.fin]||/^#[0-9a-f]{6}$/i.test(s.fin))){sel=s;sel.rs=rimSz(s.rs);sel.off=Number.isInteger(s.off)&&s.off>=0&&s.off<=16?s.off:0;sel.rh=Number.isInteger(s.rh)&&Math.abs(s.rh)<=3?s.rh:0;}}catch(e){}
 function saveSel(){try{localStorage.setItem('phd-sel4',JSON.stringify(sel));}catch(e){}}
 const bestKey=id=>id==='pebble'?'phd-best2':'phd-best-'+id;
 const modeId=()=>TRACK.id+(raceMode==='survival'?'-survival':'');   // Survival keeps its own best times
@@ -3137,6 +3251,13 @@ function rebuildPlayer(){
 // (4 rows, you in the back row, middle); Survival fills 50 spots (17 rows) back up the run-up and you start dead last
 const GRID=[];for(let r=0;r<17;r++)for(const d of [3.6,0,-3.6])GRID.push([33-9*r,d]);
 let raceMode='normal';   // 'normal' (12 cars) or 'survival' (50 cars), single player only
+// HARD AI (the last race of every career cup): the rivals push off the line as hard as a player can, drive a little faster and
+// never ease off when they're ahead of you, go after you (block you from behind, lean on you alongside, bump you from behind)
+// but keep clear of each other, and when two of them do touch it costs them almost nothing
+let HARD_AI=false;
+const HARD={skill:0.14,cap:1.08,assist:0.12};   // how much braver (cornering/braking) and how much extra pull the hard AI gets
+function hardAiSetup(){for(const c of cars)if(c.ai&&!c.hardSet){c.hardSet=true;c.skill=Math.min(HARD.cap,c.skill+HARD.skill);c.pushTimer=0.05;}}
+const HARD_PUSH_GAP=0.1;   // fastest a player can realistically tap: 10 pushes a second
 const playerSlot=()=>raceMode==='survival'?49:10;
 function placeOnTrack(c,s,d,spd){
   const i=clamp(Math.round(s/DSA),0,NS-1);
@@ -3341,19 +3462,22 @@ function collide(H){H=H||1/240;
       const kA=raz*nx-rax*nz,kB=rbz*nx-rbx*nz;
       // proper hit: instant, with bounce and spin. soft part: no bounce, no spin, the speed difference evened out gently at first touch (~0.16 s), firmer the more the bumpers squash
       const dep=best+CUSH,tau=lerp(0.22,0.035,smoothstep(CUSH*0.5,CUSH+0.05,dep));   // gentle at the edge of the cushion, firm once the bodies touch
-      const j=((vn<0&&!cushOnly?-1.3*vn*hard:0)+(1-hard)*Math.max(0,sepV-vn)*Math.min(1,H/tau))/(1/ma+1/mb+kA*kA/IA+kB*kB/IB);
+      const aa=HARD_AI&&A.ai&&B.ai&&!R0;   // two hard-AI rivals: a plastic touch that only evens their speeds out, no bounce, no spin
+      const j=((vn<0&&!cushOnly?-(aa?1:1.3)*vn*hard:0)+(1-hard)*Math.max(0,sepV-vn)*Math.min(1,H/tau))/(1/ma+1/mb+kA*kA/IA+kB*kB/IB);
       // both cars take their share, exactly like single player; another player's car gets its share shown here right away
       // and sent to that player, whose own game applies it to their car
       A.vx-=j/ma*nx;A.vz-=j/ma*nz;B.vx+=j/mb*nx;B.vz+=j/mb*nz;
       // hit spin: off-centre hits still rotate a car, but softened and capped per contact so a T-bone rarely spins it round
-      const SPIN_K=0.25*hard,SPIN_CAP=0.35,dA=-clamp(SPIN_K*j*kA/IA,-SPIN_CAP,SPIN_CAP),dB=clamp(SPIN_K*j*kB/IB,-SPIN_CAP,SPIN_CAP);
+      const SPIN_K=aa?0:0.25*hard,SPIN_CAP=0.35,dA=-clamp(SPIN_K*j*kA/IA,-SPIN_CAP,SPIN_CAP),dB=clamp(SPIN_K*j*kB/IB,-SPIN_CAP,SPIN_CAP);
       if(!ra)A.r+=dA;if(!rb)B.r+=dB;
       if(R&&NET.dbg)(NET.log=NET.log||[]).push('hit vn '+vn.toFixed(2)+' j '+Math.round(j)+' dv '+Math.round(j/ma*3.6)+'kmh A '+(ra?'remote':'me')+' vA '+Math.round(Math.hypot(A.vx,A.vz)*3.6)+' vB '+Math.round(Math.hypot(B.vx,B.vz)*3.6));
       if(R){const sg=R===A?-1:1,jx=sg*j*nx,jz=sg*j*nz,dr=R===A?dA:dB,m=R.dsg.mass;
         R.kvx=(R.kvx||0)+jx/m;R.kvz=(R.kvz||0)+jz/m;R.kr=clamp((R.kr||0)+dr,-1.2,1.2);R.kickT=raceT;R.hitDoneT=raceT;
         const P=R.pendHit||(R.pendHit={jx:0,jz:0,r:0});P.jx+=jx;P.jz+=jz;P.r+=dr;P.by=(R===A?B:A).netId;}
-      if(!cushOnly)A.hitT=B.hitT=0.8;
-      if(-vn>1)collCount++;
+      if(!cushOnly&&!aa)A.hitT=B.hitT=0.8;
+      if(-vn>1){collCount++;   // (counted once per contact, for testing)
+        const key=A.name+'|'+B.name,M=collide.last||(collide.last=new Map()),fresh=raceT-(M.get(key)??-9)>0.6;M.set(key,raceT);
+        if(fresh){if(A===player||B===player)collide.pl=(collide.pl||0)+1;else if(A.ai&&B.ai){collide.aa=(collide.aa||0)+1;const fw=Math.abs(nx*Math.sin(A.psi)+nz*Math.cos(A.psi));if(fw>0.7)collide.rear=(collide.rear||0)+1;else collide.side=(collide.side||0)+1;}}}
       if((A===player||B===player)&&-vn>2&&raceT-(collide.thudT||-9)>0.3){collide.thudT=raceT;thud(Math.min(0.7,-vn/10));shake=Math.min(1,shake+0.15*hard);}   // one thud per bump, not one per physics step while the bumpers are pressed together
     }
   }
@@ -3621,7 +3745,8 @@ function aiDrive(c,dt){
   const la=Math.min(NS-1,i+Math.round((6+spd*0.55)/DSA));
   const ka=KS[Math.min(NS-1,i+Math.round((14+spd*0.9)/DSA))];
   const LW=HALFW/6;   // lanes scale with the road width
-  let lane=c.finished?0:clamp(c.baseLane*LW+ka*160,-4.2*LW,4.2*LW);
+  // (hard AI: a gentler pull to the inside of corners, so the rivals keep their own lines instead of all squeezing onto one)
+  let lane=c.finished?0:HARD_AI&&c.ai&&c!==player?clamp(c.baseLane*LW*0.9+clamp(ka*110,-2.2*LW,2.2*LW),-4.4*LW,4.4*LW):clamp(c.baseLane*LW+ka*160,-4.2*LW,4.2*LW);
   // --- slipstream tactics: on a clear straight, tuck in behind a car, ride the tow, then pull out to pass
   if(c.ai&&!c.finished){
     if(c.towCD>0)c.towCD-=dt;
@@ -3636,12 +3761,18 @@ function aiDrive(c,dt){
     }else if(c.towCD<=0&&straight&&spd>DRAFT_MIN_V){
       let L=null,bg=1e9;for(const o of cars){if(o===c)continue;const gap=o.s-c.s;if(gap>7&&gap<56&&Math.abs(rd(o)-rd(c))<4.5&&gap<bg){L=o;bg=gap;}}
       // never join a queue: skip cars that are already towing or already being towed
+      if(L&&HARD_AI&&c!==player&&L!==player)L=null;   // hard AI only slipstreams you, never each other (tailgating each other is where most bumps come from)
       if(L&&!L.tow&&!cars.some(o=>o.tow&&o.tow.t===L)&&Math.random()<c.draftLove*dt*1.5){c.tow={t:L,time:0,max:2+Math.random()*3.5};c.towOff=(Math.random()-0.5)*0.6;}
     }
     if(c.tow)lane=rd(c.tow.t)+c.towOff;
     else if(c.passT>0){c.passT-=dt;lane=c.passLane;}
   }
-  for(const o of cars){if(o===c||(c.tow&&o===c.tow.t)||isGhost(o)||isGhost(c))continue;const ds=o.s-c.s;if(ds>0&&ds<14&&Math.abs(rd(o)-lane)<2.6)lane+=(rd(o)>lane?-2.2:2.2);}
+  const hard=HARD_AI&&c.ai&&c!==player&&!c.finished;let sideKeep=false;
+  for(const o of cars){if(o===c||(c.tow&&o===c.tow.t)||isGhost(o)||isGhost(c))continue;const ds=o.s-c.s;
+    if(hard){if(o===player)continue;   // other rivals: look further ahead, and keep a car's width from anyone alongside
+      if(ds>0&&ds<26&&Math.abs(rd(o)-lane)<3.4)lane+=(rd(o)>lane?-3.0:3.0);
+      else if(Math.abs(ds)<=5.5){const gap=rd(c)-rd(o);if(Math.abs(gap)<3.1){lane=gap>=0?Math.max(lane,rd(o)+3.1):Math.min(lane,rd(o)-3.1);sideKeep=true;}}}
+    else if(ds>0&&ds<14&&Math.abs(rd(o)-lane)<2.6)lane+=(rd(o)>lane?-2.2:2.2);}
   // start only (first 300 m): full attack, but don't steer into a car alongside and don't ram the one ahead
   let guard=0;
   if(c.ai&&!c.finished&&c.s<S0+300){
@@ -3650,8 +3781,18 @@ function aiDrive(c,dt){
       if(ds>0&&ds<8&&Math.abs(dd)<2){const closing=spd-Math.hypot(o.vx,o.vz);if(closing>1)guard=Math.max(guard,0.3);}
     }
   }
+  // hard AI goes after you: blocks your line when you're right behind, leans on you alongside, bumps you from behind
+  let chase=0;   // 1: blocking you, 2: leaning on you / going for your bumper
+  if(hard&&player&&!player.finished&&!isGhost(player)&&c.s>S0+300){   // (not in the scramble off the line)
+    const ds=player.s-c.s,pd=rd(player),cd=rd(c);
+    if(ds<-2&&ds>-16){   // you're right behind: only the car directly in front of you blocks, at normal steering speed, so a pass is still on
+      let near=true;for(const o of cars)if(o!==c&&o!==player&&o.s>player.s&&o.s<c.s)near=false;
+      if(near){lane=lerp(lane,pd,0.55);chase=1;}}
+    else if(Math.abs(ds)<=3.5&&Math.abs(pd-cd)<3.2){lane=pd+(cd>pd?1.7:-1.7);chase=2;}
+    else if(ds>4&&ds<14&&Math.abs(pd-cd)<2.4){lane=pd;chase=2;}
+  }
   lane=aiAvoid(c,lane,LW);
-  lane=clamp(lane,-4.6*LW,4.6*LW);c.lane=lerp(c.lane,lane,1-Math.exp(-dt*(c.tow?1.1:1.4)));
+  lane=clamp(lane,-4.6*LW,4.6*LW);c.lane=lerp(c.lane,lane,1-Math.exp(-dt*(sideKeep?3.2:chase===2?2.4:hard&&!chase?2:c.tow?1.1:1.4)));
   const lw=c.lane+(SPL[la]>0?(c.side||1)*SPL[la]:0)+(VOID[la]?swayOff(la,obsClock()):0),tx=PX[la]+NX[la]*lw,tz=PZ[la]+NZ[la]*lw;
   const err=wrapA(Math.atan2(tx-c.x,tz-c.z)-c.psi);
   const tgt=clamp(err*2.6-c.r*0.18,-1,1);
@@ -3664,8 +3805,9 @@ function aiDrive(c,dt){
   if(c.finished)c.brake=spd>1.5?1:0;
   c.handbrake=false;
   c.assist=(c.ai&&!c.bot&&!c.finished&&player)?clamp((player.s-c.s)/160,-1,1)*0.45:0;
+  if(hard)c.assist=Math.max(HARD.assist,c.assist);   // hard AI never waits for you, and pulls a little harder
   if(c.ai&&GAPS.length&&GAPS.some(g=>g[0]-i>0&&(g[0]-i)*DSA<260)){c.assist=Math.max(c.assist,0.35);c.brake=Math.min(c.brake,KS[i]*KS[i]>1e-5?c.brake:0);}   // commit to a gap jump
-  if(state==='race'&&raceT<2.6&&c.ai){c.pushTimer-=dt;if(c.pushTimer<=0){tryPush(c);c.pushTimer=0.22+Math.random()*0.1/c.skill;}}
+  if(state==='race'&&raceT<2.6&&c.ai){c.pushTimer-=dt;if(c.pushTimer<=0){tryPush(c);c.pushTimer=HARD_AI?HARD_PUSH_GAP:0.22+Math.random()*0.1/c.skill;}}
 }
 
 /* ================= PARTICLES ================= */
@@ -3836,6 +3978,71 @@ document.querySelectorAll('.pad').forEach(btn=>{
   btn.addEventListener('lostpointercapture',()=>{n=0;btn.classList.remove('on');if(k!=='push')input[k]=false;});
   btn.addEventListener('contextmenu',e=>e.preventDefault());
 });
+/* ---- touch button layout: each button can be moved and resized (Options → Controls), saved on this device ----
+   A saved button keeps its centre as a share of the screen and its size relative to the standard size. */
+const CTL_BASE={left:118,right:118,back:81,drift:101,brake:129,push:146};
+const CTL_FONT={drift:17,brake:17,push:24};
+let CTL={pads:{}};
+try{const o=JSON.parse(localStorage.getItem('phd-ctl')||'null');if(o&&o.pads)for(const k in CTL_BASE){const P=o.pads[k];if(P&&isFinite(P.x)&&isFinite(P.y)&&isFinite(P.s))CTL.pads[k]={x:clamp(+P.x,0,1),y:clamp(+P.y,0,1),s:clamp(+P.s,0.6,1.7)};}}catch(e){}
+function ctlSave(){try{localStorage.setItem('phd-ctl',JSON.stringify(CTL));}catch(e){}}
+const ctlDiam=(k,s)=>CTL_BASE[k]*(innerHeight<=430?0.9:1)*s;
+function ctlPlace(b,P){
+  const k=b.dataset.k;if(!P){b.style.cssText='';return;}
+  const W=innerWidth,H=innerHeight,d=ctlDiam(k,P.s),x=clamp(P.x*W,d/2+2,W-d/2-2),y=clamp(P.y*H,d/2+2,H-d/2-2);
+  b.style.cssText='left:'+(x-d/2).toFixed(1)+'px;top:'+(y-d/2).toFixed(1)+'px;right:auto;bottom:auto;margin:0;width:'+d.toFixed(1)+'px;height:'+d.toFixed(1)+'px'+(CTL_FONT[k]?';font-size:'+(CTL_FONT[k]*P.s*(innerHeight<=430?0.88:1)).toFixed(1)+'px':'');
+}
+function ctlApply(root,pads){(root||$('ctl')).querySelectorAll('.pad[data-k]').forEach(b=>ctlPlace(b,(pads||CTL.pads)[b.dataset.k]));
+  const n=Object.keys(CTL.pads).length;if($('ctlState'))$('ctlState').textContent=n?'Your own layout':'Default layout';}
+window.addEventListener('resize',()=>{ctlApply();if(!$('ctlEdit').hidden)ctlApply($('ctlEdit'),ED.work);});
+const ED={work:{},sel:null};
+function ctlEditorOpen(){
+  const E=$('ctlEdit');E.querySelectorAll('.pad').forEach(x=>x.remove());
+  for(const src of $('ctl').querySelectorAll('.pad')){const b=src.cloneNode(true);b.removeAttribute('id');b.hidden=false;b.classList.remove('on','live');b.style.cssText='';E.appendChild(b);}
+  E.hidden=false;$('options').hidden=true;ED.sel=null;ED.work={};
+  for(const b of E.querySelectorAll('.pad')){const k=b.dataset.k,P=CTL.pads[k];
+    if(P)ED.work[k]={...P};else{const r=b.getBoundingClientRect();ED.work[k]={x:(r.left+r.width/2)/innerWidth,y:(r.top+r.height/2)/innerHeight,s:1};}}   // standard spot, measured
+  ctlApply(E,ED.work);ctlBar();
+  for(const b of E.querySelectorAll('.pad')){
+    let drag=null;
+    b.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();try{b.setPointerCapture(e.pointerId);}catch(_){}
+      const P=ED.work[b.dataset.k];drag={x0:e.clientX,y0:e.clientY,px:P.x,py:P.y,moved:false};ED.sel=b.dataset.k;ctlBar();});
+    b.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x0,dy=e.clientY-drag.y0;if(!drag.moved&&Math.hypot(dx,dy)<6)return;
+      drag.moved=true;b.classList.add('drag');const P=ED.work[b.dataset.k];P.x=clamp(drag.px+dx/innerWidth,0,1);P.y=clamp(drag.py+dy/innerHeight,0,1);ctlPlace(b,P);});
+    const up=()=>{if(!drag)return;drag=null;b.classList.remove('drag');
+      const P=ED.work[b.dataset.k],d=ctlDiam(b.dataset.k,P.s);P.x=clamp(P.x,(d/2+2)/innerWidth,1-(d/2+2)/innerWidth);P.y=clamp(P.y,(d/2+2)/innerHeight,1-(d/2+2)/innerHeight);};   // keep it on screen
+    b.addEventListener('pointerup',up);b.addEventListener('pointercancel',up);b.addEventListener('contextmenu',e=>e.preventDefault());
+  }
+}
+function ctlBar(){
+  const E=$('ctlEdit'),k=ED.sel;E.querySelectorAll('.pad').forEach(b=>b.classList.toggle('sel',b.dataset.k===k));
+  const names={left:'Steer left',right:'Steer right',back:'Look back',drift:'E-brake',brake:'Brake',push:'Push'};
+  $('ctlSel').textContent=k?names[k]:'All buttons';
+  const v=Math.round((k?ED.work[k].s:ED.work.left.s)*100);$('ctlSize').value=v;$('ctlSizeV').textContent=v+'%';
+}
+function ctlSetSize(v){
+  v=clamp(Math.round(v/5)*5,60,170)/100;
+  if(ED.sel)ED.work[ED.sel].s=v;else for(const k in ED.work)ED.work[k].s=v;
+  ctlApply($('ctlEdit'),ED.work);ctlBar();
+}
+$('ctlSize').addEventListener('input',e=>ctlSetSize(+e.target.value));
+$('ctlMinus').onclick=()=>ctlSetSize(+$('ctlSize').value-5);$('ctlPlus').onclick=()=>ctlSetSize(+$('ctlSize').value+5);
+$('ctlEdit').addEventListener('pointerdown',e=>{if(e.target===$('ctlEdit')){ED.sel=null;ctlBar();}});   // tap the empty screen: back to "All buttons"
+$('ctlReset').onclick=()=>{CTL.pads={};ctlEditorOpen();};
+$('ctlDone').onclick=()=>{CTL.pads=ED.work;ctlSave();$('ctlEdit').hidden=true;$('options').hidden=menuScreen!=='options';ctlApply();};
+$('ctlEditBtn').onclick=()=>{initAudio();ctlEditorOpen();};
+$('ctlResetBtn').onclick=()=>{CTL.pads={};ctlSave();ctlApply();};
+document.querySelectorAll('[data-otab]').forEach(b=>b.addEventListener('click',()=>{
+  const t=b.dataset.otab;document.querySelectorAll('[data-otab]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+  $('optGen').hidden=t!=='gen';$('optCtl').hidden=t!=='ctl';}));
+ctlApply();
+// TESTING ONLY (remove before release): full screen in a phone browser
+$('fsBtn').onclick=()=>{
+  const d=document,el=d.documentElement,on=d.fullscreenElement||d.webkitFullscreenElement;
+  if(on){(d.exitFullscreen||d.webkitExitFullscreen).call(d);return;}
+  const req=el.requestFullscreen||el.webkitRequestFullscreen;
+  if(!req){flash('No full screen here','iPhone: Share → Add to Home Screen','white');return;}
+  Promise.resolve(req.call(el,{navigationUI:'hide'})).then(()=>{try{screen.orientation.lock('landscape').catch(()=>{});}catch(e){}}).catch(()=>flash('Full screen was refused','','white'));
+};
 function releaseAll(){for(const k in input)input[k]=false;document.querySelectorAll('.pad.on').forEach(b=>b.classList.remove('on'));}
 
 /* ================= CAMERA ================= */
@@ -4017,7 +4224,7 @@ function drawProfile(){
   for(const c of order){const [x,y]=profXY(clamp(c.s,S0,LEN),c.s<S0?RH[I0]:interp(RH,c.idx,c.along),W,H);const me=c===player;
     pctx.beginPath();pctx.arc(x,y-(me?3.5:2)*dpr,(me?4.2:2.6)*dpr,0,Math.PI*2);pctx.fillStyle=c.paint;pctx.fill();pctx.lineWidth=(me?2:1)*dpr;pctx.strokeStyle='#1e2340';pctx.stroke();}
 }
-const ord=n=>n===1?'st':n===2?'nd':n===3?'rd':'th';
+const ord=n=>{const t=n%100;return t>10&&t<14?'th':n%10===1?'st':n%10===2?'nd':n%10===3?'rd':'th';};
 const fmt=t=>{const m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(2);};
 let hudT=0,lastPlace=0;
 function standings(){return cars.slice().sort((a,b)=>{if(a.finished&&b.finished)return a.finishTime-b.finishTime;if(a.finished)return -1;if(b.finished)return 1;return b.s-a.s;});}
@@ -4043,21 +4250,20 @@ function updateHUD(dt){
 function flash(text,sub,cls){const m=$('msg');m.className='disp stroke'+(cls?' '+cls:'');m.innerHTML=text+(sub?'<small>'+sub+'</small>':'');void m.offsetWidth;m.classList.add('pop');}
 
 /* ================= FLOW ================= */
-const MENUS=['home','single','tracks','multi','lobby','garage','options','account'];
+const MENUS=['home','single','tracks','career','multi','lobby','garage','options','account'];
 function showScreen(name){
   state='menu';paused=false;menuScreen=name;
   for(const m of MENUS)$(m).hidden=m!==name;
   $('hud').hidden=true;$('results').hidden=true;$('pause').hidden=true;
-  if(name==='single'||name==='tracks'){const t=Object.values(TRACKS).map(T=>{const b=loadBest(T.id);return T.name+': '+(b?fmt(b):'no time yet');}).join(' · ');$('best').textContent='Best times · '+t;
-    const sv=Object.values(TRACKS).map(T=>{const b=loadBest(T.id+'-survival');return T.name+': '+(b?fmt(b):'no time yet');}).join(' · ');
-    $('trackBest').textContent=customMode==='survival'?'Survival best times · '+sv:'Best times · '+t;
-    document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===customMode)));}
+  if(name==='single'||name==='tracks')document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===customMode)));
   $('menubg').hidden=name==='garage';
   if(name==='garage'){renderGarage();if(!garage.car)rebuildGarageCar();}
   if(name==='multi')openMulti();
   if(name==='lobby')lobbyRender();
   if(name==='options'||name==='tracks')applyOpts();
   if(name==='account')acctOpen();
+  if(name==='career')careerRender();
+  if(name==='single')$('careerSub').textContent=careerMenuSub();
   onResize();
 }
 let worldBuilt=false;
@@ -4072,7 +4278,9 @@ function renderGarage(){
   document.querySelectorAll('#swatches button[data-p]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.p.toLowerCase()===sel.paint.toLowerCase())));
   const cu=$('paintCustom');const isCustom=!PAINTS.some(p=>p.toLowerCase()===sel.paint.toLowerCase());cu.parentNode.setAttribute('aria-pressed',String(isCustom));if(isCustom)cu.value=sel.paint;
   document.querySelectorAll('#rimStyles button').forEach((b,i)=>b.setAttribute('aria-pressed',String(i===sel.rim)));
-  document.querySelectorAll('#rimFins button').forEach((b,i)=>b.setAttribute('aria-pressed',String(i===sel.fin)));
+  document.querySelectorAll('#rimFins button').forEach(b=>b.setAttribute('aria-pressed',String(b.classList.contains('custom')?isHex(sel.fin):+b.dataset.i===sel.fin)));
+  if(isHex(sel.fin))$('rimCustom').value=sel.fin;
+  rimThumbs();
   $('rimSize').value=sel.rs;$('rimSizeV').textContent=sel.rs+'"';
   {const F=stanceFit(carGeos(sel.design)),o=Math.min(sel.off,F.offMax),h=Math.max(F.rhMin,Math.min(F.rhMax,sel.rh));
     $('offSize').max=F.offMax;$('offSize').value=o;$('offSizeV').textContent=(o?'+':'')+(o/2).toFixed(1)+'"';
@@ -4090,40 +4298,48 @@ function ensureTrack(id,done,note){
     done();},60);
 }
 let customMode='normal';try{if(localStorage.getItem('phd-mode')==='survival')customMode='survival';}catch(e){}
-function startQuick(id,mode){
-  initAudio();id=id||builtTrack||'pebble';NET.online=false;raceMode=mode||'normal';
+function startQuick(id,mode,career){
+  initAudio();id=id||builtTrack||'pebble';NET.online=false;raceMode=mode||'normal';careerRun=career||null;careerSnap=null;
   ensureTrack(id,()=>{$('loading').hidden=true;setupCars();startRace();});
 }
 function startRace(){
   initAudio();if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
   for(const m of MENUS)$(m).hidden=true;$('menubg').hidden=true;$('hud').hidden=false;$('results').hidden=true;$('pause').hidden=true;
   camera.clearViewOffset();
-  resetRace();sizeProfile();lastPlace=0;$('posOf').textContent='of '+cars.length;
+  resetRace();sizeProfile();lastPlace=0;
   updateCamera(0,true);
   raceLabel=announceTrack?'Quick race · '+TRACK.name:'';announceTrack=false;if(raceLabel)flash(TRACK.name,'Quick race');
   if(raceMode==='survival'&&!NET.online){raceLabel='Survival · '+TRACK.name;flash('Survival','50 cars · you start last');}
+  HARD_AI=!NET.online&&!!careerRun&&careerRun.kind==='cup'&&(((CAR.cups[careerRun.track]||{}).run||{}).race||0)===CUP_RACES-1;
+  if(HARD_AI)hardAiSetup();
+  {const cl=!NET.online&&careerRaceLabel();if(cl){raceLabel=cl[1];flash(cl[0],cl[1]);}}
+  careerRaceStarted();
   const rw=$('resWrap');if(rw)rw.scrollTop=0;
 }
 function togglePause(){
   if(state!=='race'&&state!=='countdown')return;
   if(NET.inRace||NET.results){const open=$('pause').hidden;$('pause').hidden=!open;releaseAll();$('restartBtn').hidden=true;$('quitBtn').textContent='Leave race';$('resumeBtn').textContent='Back to race';return;}
-  $('restartBtn').hidden=false;$('quitBtn').textContent='Main menu';$('resumeBtn').textContent='Resume';
+  const cupRace=!!careerRun&&careerRun.kind==='cup';quitArmed=false;
+  $('restartBtn').hidden=cupRace;$('quitBtn').textContent=cupRace?'Retire (last place)':careerRun?'Career menu':'Main menu';$('resumeBtn').textContent='Resume';
   paused=!paused;$('pause').hidden=!paused;releaseAll();
   if(AC){paused?AC.suspend():AC.resume();}
 }
 function showResults(){
   resultsShown=true;
   if(NET.online){netShowResults();return;}
-  $('voteBox').hidden=true;$('againBtn').hidden=false;$('garageBtn').textContent='Main menu';
+  $('voteBox').hidden=true;$('againBtn').hidden=false;$('garageBtn').textContent='Main menu';$('againBtn').textContent='Race again';
   const st=standings(),place=st.indexOf(player)+1;
   $('resTitle').textContent=place===1?'You won!':place+ord(place)+' place';
   const best=loadBest(modeId());let sub='Finish time '+fmt(player.finishTime)+' · top speed '+spdVal(player.vmax)+' '+spdUnit();
   if(!best||player.finishTime<best){saveBest(player.finishTime,modeId());sub+=best?' · new personal best!':'';}
   else sub+=' · best '+fmt(best);
-  $('resSub').textContent=sub;renderTable();$('results').hidden=false;
+  $('resSub').textContent=sub;
+  if(careerRun)careerFinish(place);
+  renderTable();$('results').hidden=false;
 }
 function renderTable(){
   if(NET.results)return netRenderResults();
+  if(careerRun&&careerRenderTable())return;
   const st=standings();const lead=st[0].finished?st[0].finishTime:0;
   $('resTable').innerHTML=st.map((c,i)=>'<tr class="'+(c===player?'me':'')+'"><td class="n">'+(i+1)+'</td><td><span class="dot" style="background:'+c.paint+'"></span>'+c.name+' <span class="muted" style="display:inline">#'+c.num+' '+c.dsg.name+'</span></td><td class="t">'+(c.finished?(i===0?fmt(c.finishTime):'+'+(c.finishTime-lead).toFixed(2)+' s'):'racing…')+'</td></tr>').join('');
 }
@@ -4137,7 +4353,30 @@ $('nextCar').onclick=()=>{sel.design=(sel.design+1)%DESIGNS.length;applySel();};
 PAINTS.forEach(p=>{const b=document.createElement('button');b.style.background=p;b.dataset.p=p;b.setAttribute('aria-label','Paint '+p);b.onclick=()=>{sel.paint=p;applySel();};$('swatches').appendChild(b);});
 {const b=document.createElement('button');b.className='custom';b.setAttribute('aria-label','Custom paint colour');const inp=document.createElement('input');inp.type='color';inp.id='paintCustom';inp.value='#ff66aa';
  inp.addEventListener('input',()=>{sel.paint=inp.value;applySel();});b.appendChild(inp);$('swatches').appendChild(b);}
-RIMS.forEach((n,i)=>{const b=document.createElement('button');b.textContent=n;b.onclick=()=>{sel.rim=i;applySel();};$('rimStyles').appendChild(b);});
+RIMS.forEach((n,i)=>{const b=document.createElement('button');b.title=n;b.setAttribute('aria-label',n+' wheels');const im=document.createElement('canvas');im.width=im.height=120;b.appendChild(im);
+  b.onclick=()=>{if(rimDrag.moved)return;sel.rim=i;applySel();};$('rimStyles').appendChild(b);});
+// with a mouse, the strip can also be dragged sideways (fingers scroll it natively)
+const rimDrag={x:0,sl:0,on:false,moved:false};
+{const st=$('rimStyles');st.addEventListener('pointerdown',e=>{if(e.pointerType!=='mouse')return;rimDrag.on=true;rimDrag.moved=false;rimDrag.x=e.clientX;rimDrag.sl=st.scrollLeft;});
+ window.addEventListener('pointermove',e=>{if(!rimDrag.on)return;const dx=e.clientX-rimDrag.x;if(Math.abs(dx)>5)rimDrag.moved=true;if(rimDrag.moved)st.scrollLeft=rimDrag.sl-dx;});
+ window.addEventListener('pointerup',()=>{if(rimDrag.on){rimDrag.on=false;setTimeout(()=>{rimDrag.moved=false;},0);}});}
+// rim previews: each style rendered from the real wheel model, in the chosen rim colour and size, off screen
+const rimTh={rt:null,scene:null,cam:null,key:'',queued:false};
+function rimThumbs(){
+  clearTimeout(rimTh.t);   // wait until the colour / size stops changing, then redraw them all once
+  rimTh.t=setTimeout(()=>requestAnimationFrame(()=>{const key=sel.fin+'|'+sel.rs;if(rimTh.key===key||!renderer)return;rimTh.key=key;
+    const S=120;
+    if(!rimTh.rt){rimTh.rt=new THREE.WebGLRenderTarget(S,S);const sc=new THREE.Scene();sc.background=new THREE.Color(0xffffff);
+      sc.add(new THREE.AmbientLight(0xffffff,0.45));sc.add(new THREE.HemisphereLight(0xe6eeff,0x6a6f7a,0.5));const d=new THREE.DirectionalLight(0xfff6e8,0.95);d.position.set(4,5,3);sc.add(d);
+      rimTh.scene=sc;rimTh.cam=new THREE.PerspectiveCamera(19,1,0.1,20);const a=0.3;rimTh.cam.position.set(Math.cos(a)*3.15,0.22,Math.sin(a)*3.15);rimTh.cam.lookAt(0,0,0);}
+    const buf=new Uint8Array(S*S*4),prev=renderer.getRenderTarget();let img=null;
+    document.querySelectorAll('#rimStyles button').forEach((b,i)=>{
+      const g=new THREE.Group();buildWheel(g,1,i,sel.fin,sel.rs);rimTh.scene.add(g);
+      renderer.setRenderTarget(rimTh.rt);renderer.render(rimTh.scene,rimTh.cam);renderer.readRenderTargetPixels(rimTh.rt,0,0,S,S,buf);rimTh.scene.remove(g);
+      img=img||new ImageData(S,S);for(let y=0;y<S;y++)img.data.set(buf.subarray((S-1-y)*S*4,(S-y)*S*4),y*S*4);   // (pixels come bottom row first)
+      const cx=b.querySelector('canvas').getContext('2d');img=img||cx.createImageData(S,S);cx.putImageData(img,0,0);b.dataset.drawn=key;});
+    renderer.setRenderTarget(prev);}),rimTh.key?220:0);
+}
 {const setRs=v=>{v=Math.max(RIM_MIN,Math.min(RIM_MAX,v));if(v!==sel.rs){sel.rs=v;applySel();}};
   $('rimSize').addEventListener('input',e=>setRs(+e.target.value));$('rimDown').onclick=()=>setRs(sel.rs-1);$('rimUp').onclick=()=>setRs(sel.rs+1);
   const fit=()=>stanceFit(carGeos(sel.design));
@@ -4145,12 +4384,19 @@ RIMS.forEach((n,i)=>{const b=document.createElement('button');b.textContent=n;b.
   const setRh=v=>{const F=fit();v=Math.max(F.rhMin,Math.min(F.rhMax,v));if(v!==sel.rh){sel.rh=v;applySel();}};
   $('offSize').addEventListener('input',e=>setOff(+e.target.value));$('offDown').onclick=()=>setOff(Math.min(sel.off,fit().offMax)-1);$('offUp').onclick=()=>setOff(Math.min(sel.off,fit().offMax)+1);
   $('rhSize').addEventListener('input',e=>setRh(+e.target.value));$('rhDown').onclick=()=>setRh(sel.rh-1);$('rhUp').onclick=()=>setRh(sel.rh+1);}
-RIM_FINS.forEach((f,i)=>{const b=document.createElement('button');b.style.background='#'+f.c.toString(16).padStart(6,'0');b.title=f.n;b.setAttribute('aria-label','Rim finish '+f.n);b.onclick=()=>{sel.fin=i;applySel();};$('rimFins').appendChild(b);});
-$('againBtn').onclick=()=>{setupCars();startRace();};
-$('garageBtn').onclick=()=>{if(NET.results||NET.lobby){netLeave();return;}showHome();};
+RIM_FINS.forEach((f,i)=>{const b=document.createElement('button');b.dataset.i=i;b.style.background='#'+f.c.toString(16).padStart(6,'0');b.title=f.n;b.setAttribute('aria-label','Rim finish '+f.n);b.onclick=()=>{sel.fin=i;applySel();};$('rimFins').appendChild(b);});
+{const b=document.createElement('button');b.className='custom';b.setAttribute('aria-label','Any wheel colour');b.title='Any colour';const inp=document.createElement('input');inp.type='color';inp.id='rimCustom';inp.value='#3fb8ff';
+ inp.addEventListener('input',()=>{sel.fin=inp.value.toLowerCase();applySel();});b.appendChild(inp);$('rimFins').appendChild(b);}
+$('againBtn').onclick=()=>{if(careerRun)return careerAgain();setupCars();startRace();};
+$('garageBtn').onclick=()=>{if(NET.results||NET.lobby){netLeave();return;}if(careerRun){showScreen('career');return;}showHome();};
 $('resumeBtn').onclick=togglePause;
 $('restartBtn').onclick=()=>{paused=false;if(AC)AC.resume();startRace();};
-$('quitBtn').onclick=()=>{paused=false;if(AC)AC.resume();if(NET.inRace||NET.results||NET.lobby){netLeave();return;}showHome();};
+let quitArmed=false;
+$('quitBtn').onclick=()=>{
+  if(careerRun&&careerRun.kind==='cup'&&state!=='menu'&&!resultsShown){   // leaving a cup race = retiring: ask once more
+    if(!quitArmed){quitArmed=true;$('quitBtn').textContent='Tap again: retire, last place';return;}
+    quitArmed=false;paused=false;if(AC)AC.resume();careerRetire();showScreen('career');return;}
+  paused=false;if(AC)AC.resume();if(NET.inRace||NET.results||NET.lobby){netLeave();return;}if(careerRun){showScreen('career');return;}showHome();};
 $('pauseBtn').onclick=togglePause;
 $('camBtn').onclick=cycleCam;
 // manual reset: only once you're past the START arch (no resetting on the grid or the start ramp)
@@ -4316,6 +4562,258 @@ function mpForm(title,fields,submit,fn,back){
   setTimeout(()=>{const k=Object.values(inputs)[0];if(k&&!isTouch)k.focus();},30);
   return f;
 }
+/* ================= CAREER ================= */
+// Every track has a cup: 3 races against the same 11 rivals, scored with points. Winning the cup (1st on points)
+// unlocks the next track. Every unlocked track also has a bonus Survival race, which never blocks progress.
+// 100% = every cup and every Survival bonus won. Progress is saved after each race: on this device, and in the
+// account when signed in (the "career" field of the Supabase profile), so players can stop and carry on later.
+// Leaving a cup race (or closing the game during one) counts as retiring: last place in that race.
+// The last race of every cup is raced against "hard AI" (see HARD_AI).
+const CUP_RACES=3,CUP_PTS=[15,12,10,9,8,7,6,5,4,3,2,1];
+const CAREER_ORDER=Object.keys(TRACKS);   // Pebble Hill → Mesozon
+const ME='You';
+let careerRun=null;    // the career race being driven: {kind:'cup'|'surv', track}
+let careerSnap=null;   // what the results screen shows after a career race
+let careerNote='';     // a message for the Career screen (e.g. after retiring)
+const DEVICE_ID=(()=>{try{let d=localStorage.getItem('phd-dev');if(!d){d=Math.random().toString(36).slice(2,10);localStorage.setItem('phd-dev',d);}return d;}catch(e){return 'x';}})();
+const careerBlank=()=>({v:1,cups:{},surv:{},at:0});
+// whatever comes from storage or the server is checked before use
+function careerValid(c){
+  const out=careerBlank();if(!c||typeof c!=='object')return out;
+  const int=(v,lo,hi)=>{v=Math.round(+v);return isFinite(v)&&v>=lo&&v<=hi?v:0;};
+  out.at=int(c.at,0,9e15);
+  for(const id of CAREER_ORDER){
+    const C=c.cups&&c.cups[id];
+    if(C&&typeof C==='object'){
+      const o={best:int(C.best,1,12),played:int(C.played,0,1e6),doneAt:int(C.doneAt,0,9e15),run:null};
+      const R=C.run;
+      const L=R&&R.live&&typeof R.live==='object'?{race:int(R.live.race,0,CUP_RACES-1),at:int(R.live.at,0,9e15),dev:String(R.live.dev||'').slice(0,12)}:null;
+      if(R&&typeof R==='object'&&(int(R.race,1,CUP_RACES-1)||L)){
+        const pts={};for(const k of Object.keys(R.pts||{}).slice(0,12))pts[String(k).slice(0,20)]=int(R.pts[k],0,CUP_PTS[0]*CUP_RACES);
+        o.run={race:int(R.race,0,CUP_RACES-1),pts,last:Array.isArray(R.last)?R.last.slice(0,12).map(x=>String(x).slice(0,20)):[],at:int(R.at,0,9e15),live:L,
+          places:Array.isArray(R.places)?R.places.slice(0,CUP_RACES).map(x=>int(x,1,12)).filter(Boolean):[]};
+      }
+      const B=C.bestRun;
+      if(B&&typeof B==='object'&&int(B.final,1,12))o.bestRun={final:int(B.final,1,12),places:Array.isArray(B.places)?B.places.slice(0,CUP_RACES).map(x=>int(x,1,12)):[],at:int(B.at,0,9e15)};
+      out.cups[id]=o;
+    }
+    const S=c.surv&&c.surv[id];
+    if(S&&typeof S==='object')out.surv[id]={best:int(S.best,1,50),played:int(S.played,0,1e6)};
+  }
+  return out;
+}
+// two saves of the same career (this device, the account): keep the best of both
+function careerMerge(a,b){
+  a=careerValid(a);b=careerValid(b);const m=careerBlank();m.at=Math.max(a.at,b.at);
+  const lo=(x,y)=>x&&y?Math.min(x,y):(x||y);
+  for(const id of CAREER_ORDER){
+    const A=a.cups[id],B=b.cups[id];
+    if(A||B){
+      const o={best:lo(A&&A.best,B&&B.best),played:Math.max(A?A.played:0,B?B.played:0),doneAt:Math.max(A?A.doneAt:0,B?B.doneAt:0),run:null};
+      const bests=[A&&A.bestRun,B&&B.bestRun].filter(Boolean).sort((x,y)=>x.final-y.final||y.at-x.at);if(bests.length)o.bestRun=bests[0];
+      const runs=[A&&A.run,B&&B.run].filter(Boolean).sort((x,y)=>y.at-x.at);
+      if(runs.length&&runs[0].at>o.doneAt)o.run=runs[0];   // a cup in progress, unless it was finished later somewhere else
+      m.cups[id]=o;
+    }
+    const SA=a.surv[id],SB=b.surv[id];
+    if(SA||SB)m.surv[id]={best:lo(SA&&SA.best,SB&&SB.best),played:Math.max(SA?SA.played:0,SB?SB.played:0)};
+  }
+  return m;
+}
+const careerKey=()=>ACC.uid?'phd-career-'+ACC.uid:'phd-career';
+function careerRead(key){try{return careerValid(JSON.parse(localStorage.getItem(key)||'null'));}catch(e){return careerBlank();}}
+let CAR=careerRead('phd-career');
+function careerSave(){
+  CAR.at=Date.now();
+  try{localStorage.setItem(careerKey(),JSON.stringify(CAR));}catch(e){}
+  if(ACC.sb&&ACC.user)ACC.sb.rpc('save_career',{data:CAR}).then(r=>{if(r.data)ACC.profile=r.data;});
+}
+// signed in: the account's career, this device's copy of it, and anything played here before signing in become one
+function careerSignedIn(server){
+  const merged=careerMerge(careerMerge(server,careerRead('phd-career-'+ACC.uid)),careerRead('phd-career'));
+  CAR=merged;careerSweep(true);try{localStorage.setItem(careerKey(),JSON.stringify(CAR));}catch(e){}
+  if(JSON.stringify(careerValid(server))!==JSON.stringify(CAR))ACC.sb.rpc('save_career',{data:CAR}).then(r=>{if(r.data)ACC.profile=r.data;});
+  if(menuScreen==='career'||menuScreen==='single')showScreen(menuScreen);
+}
+function careerSignedOut(){CAR=careerRead('phd-career');careerSweep();if(menuScreen==='career'||menuScreen==='single')showScreen(menuScreen);}
+
+const careerSurvOpen=id=>careerUnlocked(id)&&((CAR.cups[id]||{}).played||0)>0;
+const careerUnlocked=id=>{const i=CAREER_ORDER.indexOf(id);return i===0||(CAR.cups[CAREER_ORDER[i-1]]||{}).best===1;};
+function careerProgress(){
+  let n=0;for(const id of CAREER_ORDER){if((CAR.cups[id]||{}).best===1)n++;if((CAR.surv[id]||{}).best===1)n++;}
+  const of=CAREER_ORDER.length*2;return {n,of,pct:Math.floor(n/of*100)};
+}
+// cup standings: most points first; a tie goes to whoever finished ahead in the latest race
+function careerTable(run){
+  const names=Object.keys(run.pts),last=run.last||[];
+  return names.map(n=>({name:n,pts:run.pts[n]})).sort((a,b)=>b.pts-a.pts||((last.indexOf(a.name)+99)%99)-((last.indexOf(b.name)+99)%99));
+}
+function careerStartCup(id,fresh){
+  if(!careerUnlocked(id))return;
+  const C=CAR.cups[id]||(CAR.cups[id]={best:0,played:0,doneAt:0,run:null});
+  if(fresh&&C.run){C.run=null;careerSave();}
+  startQuick(id,'normal',{kind:'cup',track:id});
+}
+// a cup race has started: note it, so that leaving it (even by closing the game) counts as retiring
+function careerRaceStarted(){
+  if(!careerRun||careerRun.kind!=='cup')return;
+  const C=CAR.cups[careerRun.track]||(CAR.cups[careerRun.track]={best:0,played:0,doneAt:0,run:null});
+  if(!C.run)C.run={race:0,pts:{},last:[],at:Date.now(),live:null,places:[]};
+  C.run.live={race:C.run.race,at:Date.now(),dev:DEVICE_ID};careerSave();
+}
+// score one cup race: names in finishing order (You included). Returns what happened.
+function careerScore(id,order){
+  const C=CAR.cups[id]||(CAR.cups[id]={best:0,played:0,doneAt:0,run:null});
+  const run=C.run||{race:0,pts:{},last:[],at:0,places:[]},gained={};
+  order.forEach((k,i)=>{gained[k]=CUP_PTS[i]||0;run.pts[k]=(run.pts[k]||0)+gained[k];});
+  run.last=order.slice();run.race++;run.at=Date.now();run.live=null;run.places=(run.places||[]).concat([order.indexOf(ME)+1]);
+  const table=careerTable(run),cupPlace=table.findIndex(r=>r.name===ME)+1;
+  const out={race:run.race,table,gained,cupPlace,place:order.indexOf(ME)+1,over:run.race>=CUP_RACES,wasWon:C.best===1};
+  if(out.over){C.played++;if(!C.best||cupPlace<C.best)C.best=cupPlace;C.run=null;C.doneAt=Date.now();
+    if(!C.bestRun||cupPlace<=C.bestRun.final)C.bestRun={final:cupPlace,places:run.places.slice(),at:Date.now()};}   // the best cup so far (a tie: the latest)
+  else C.run=run;
+  return out;
+}
+// the rivals' order when we don't know how the race went (the game was closed): as they stand in the cup
+function careerRivalOrder(id){
+  const run=(CAR.cups[id]||{}).run,names=RIVALS.map(r=>r.name);
+  if(!run||!Object.keys(run.pts).length)return names;
+  return names.slice().sort((a,b)=>(run.pts[b]||0)-(run.pts[a]||0)||names.indexOf(a)-names.indexOf(b));
+}
+// leaving a cup race from the pause menu: last place, the rivals where they were on the road
+function careerRetire(){
+  const id=careerRun.track,order=standings().filter(c=>c!==player).map(c=>c.name).concat([ME]);
+  const r=careerScore(id,order);careerSave();careerRun=null;
+  careerNote='You retired from race '+r.race+' of the '+TRACKS[id].name+' Cup: last place, +'+r.gained[ME]+' point'+(r.gained[ME]===1?'':'s')+'.'+(r.over?' The cup is over: '+r.cupPlace+ord(r.cupPlace)+'.':'');
+}
+// cup races that were left by closing the game: retire them. On the device that was racing that's right away;
+// elsewhere only once it's clearly over (10 minutes), so a race going on on another device isn't cut short.
+function careerSweep(noSave){
+  let any=false;
+  for(const id of CAREER_ORDER){
+    const C=CAR.cups[id],L=C&&C.run&&C.run.live;if(!L)continue;
+    if(careerRun&&careerRun.track===id&&(state==='race'||state==='countdown'))continue;
+    if(L.dev!==DEVICE_ID&&Date.now()-L.at<600e3)continue;
+    const r=careerScore(id,careerRivalOrder(id).concat([ME]));any=true;
+    careerNote='The game was closed during race '+r.race+' of the '+TRACKS[id].name+' Cup: that counts as retiring (last place, +'+r.gained[ME]+' point'+(r.gained[ME]===1?'':'s')+').';
+  }
+  if(any&&!noSave)careerSave();
+  return any;
+}
+setTimeout(()=>careerSweep(),0);   // (after start-up: a cup race left by closing the game counts as retired)
+function careerStartSurv(id){if(careerSurvOpen(id))startQuick(id,'survival',{kind:'surv',track:id});}
+function careerRaceLabel(){
+  if(!careerRun)return null;const T=TRACKS[careerRun.track];
+  if(careerRun.kind==='surv')return ['Bonus Survival','Career · '+T.name+' · 50 cars, you start last'];
+  const run=(CAR.cups[careerRun.track]||{}).run,n=(run?run.race:0)+1;
+  return n===CUP_RACES?['Final race',T.name+' Cup · race '+n+' of '+CUP_RACES]:[T.name+' Cup','Career · race '+n+' of '+CUP_RACES];
+}
+// a career race just ended: score it, save, and set up the results screen
+function careerFinish(place){
+  const id=careerRun.track,T=TRACKS[id],st=standings(),nm=c=>c===player?ME:c.name;
+  const before=careerProgress().n;
+  if(careerRun.kind==='surv'){
+    const S=CAR.surv[id]||(CAR.surv[id]={best:0,played:0});const first=!S.best||S.best>1;
+    S.played++;if(!S.best||place<S.best)S.best=place;careerSave();
+    careerSnap={kind:'surv',place,best:S.best};
+    $('resTitle').textContent=place===1?(first?'Bonus complete!':'You won again!'):place+ord(place)+' of '+cars.length;
+    $('resSub').textContent=place===1?'1st place in the '+T.name+' Survival.':'Finish 1st to complete this bonus.'+(S.best&&S.best<place?' Your best: '+S.best+ord(S.best)+'.':'');
+    $('againBtn').textContent='Try again';
+  }else{
+    const sc=careerScore(id,st.map(nm)),table=sc.table,cupPlace=sc.cupPlace,me=table[cupPlace-1],gained=sc.gained,wasWon=sc.wasWon;
+    const run={race:sc.race};
+    careerSnap={kind:'cup',race:sc.race,table,gained,place,cupPlace};
+    if(sc.over){   // the cup is over
+      const next=CAREER_ORDER[CAREER_ORDER.indexOf(id)+1];careerSnap.over=true;careerSnap.next=next;careerSnap.unlocked=cupPlace===1&&!wasWon&&next?next:null;
+      $('resTitle').textContent=cupPlace===1?T.name+' Cup won!':'Cup over: '+cupPlace+ord(cupPlace)+' place';
+      $('resSub').textContent=cupPlace===1?(careerSnap.unlocked?TRACKS[next].name+' is unlocked!':next?'You already won this cup.':'That was the last cup.')+' '+me.pts+' points.'
+        :'You need 1st place on points'+(next&&!careerUnlocked(next)?' to unlock '+TRACKS[next].name:'')+'. You scored '+me.pts+', the winner '+table[0].pts+'.';
+      $('againBtn').textContent=cupPlace===1&&next?'Next: '+TRACKS[next].name+' Cup':'Race the cup again';
+    }else{
+      $('resTitle').textContent=(place===1?'You won':place+ord(place)+' in')+' race '+run.race+' of '+CUP_RACES;
+      const gap=cupPlace===1?(table[1]?' · '+(me.pts-table[1].pts)+' ahead of '+table[1].name:''):' · '+(table[0].pts-me.pts)+' behind '+table[0].name;
+      $('resSub').textContent='+'+gained[ME]+' points. Cup: '+cupPlace+ord(cupPlace)+' with '+me.pts+gap+'.';
+      $('againBtn').textContent=run.race+1===CUP_RACES?'Final race (hard AI)':'Race '+(run.race+1)+' of '+CUP_RACES;
+    }
+    careerSave();
+  }
+  const after=careerProgress();
+  if(after.n===after.of&&before<after.of){$('resTitle').textContent='100% complete!';$('resSub').textContent='Every cup and every Survival bonus won. You are the champion of the hills!';}
+  $('garageBtn').textContent='Career';
+}
+function careerRenderTable(){
+  const S=careerSnap;if(!S||S.kind!=='cup')return false;
+  const col=n=>{if(n===ME)return sel.paint;const c=cars.find(x=>x.name===n);return c?c.paint:'#ccc';};
+  $('resTable').innerHTML='<tr class="hd"><td class="n"></td><td>Cup'+(S.over?' final':' after race '+S.race)+'</td><td class="t">race</td><td class="t">points</td></tr>'+
+    S.table.map((r,i)=>'<tr class="'+(r.name===ME?'me':'')+'"><td class="n">'+(i+1)+'</td><td><span class="dot" style="background:'+col(r.name)+'"></span>'+r.name+'</td><td class="t">+'+S.gained[r.name]+'</td><td class="t">'+r.pts+'</td></tr>').join('');
+  return true;
+}
+function careerAgain(){
+  const S=careerSnap,id=careerRun.track;
+  if(careerRun.kind==='surv')return careerStartSurv(id);
+  if(S&&S.over)return S.cupPlace===1&&S.next?careerStartCup(S.next,true):careerStartCup(id,true);
+  careerStartCup(id);
+}
+// ---- the Career screen
+const SVG_CUP=c=>'<svg class="cmed" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v4a5 5 0 0 1-10 0z" fill="'+c+'" stroke="#1e2340" stroke-width="2" stroke-linejoin="round"/><path d="M7 5H4v1a3 3 0 0 0 3 3M17 5h3v1a3 3 0 0 1-3 3" fill="none" stroke="#1e2340" stroke-width="2"/><path d="M12 12v4M8 21h8l-1-5H9z" fill="'+c+'" stroke="#1e2340" stroke-width="2" stroke-linejoin="round"/></svg>';
+const SVG_STAR=c=>'<svg class="cmed" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.8 2.8 5.8 6.3.9-4.6 4.4 1.1 6.3L12 17.2l-5.6 3 1.1-6.3L2.9 9.5l6.3-.9z" fill="'+c+'" stroke="#1e2340" stroke-width="2" stroke-linejoin="round"/></svg>';
+const MEDAL=p=>p===1?'#ffc93c':p===2?'#d5dbe4':p===3?'#e0965a':'#ffffff';
+function careerRender(){
+  const P=careerProgress();
+  $('careerPct').textContent=P.pct+'%';$('careerBar').style.width=P.pct+'%';
+  const L=$('careerList');L.innerHTML='';
+  if(careerNote){const n=document.createElement('div');n.className='card cnote';n.textContent=careerNote;L.appendChild(n);careerNote='';}
+  CAREER_ORDER.forEach((id,i)=>{
+    const T=TRACKS[id],C=CAR.cups[id]||{},S=CAR.surv[id]||{},open=careerUnlocked(id);
+    const row=document.createElement('div');row.className='card crow'+(open?'':' locked');row.dataset.track=id;
+    const h=document.createElement('h3');h.textContent=T.name;row.appendChild(h);
+    if(!open){const p=document.createElement('p');p.className='cst';p.textContent='Locked: win the '+TRACKS[CAREER_ORDER[i-1]].name+' Cup to unlock.';row.appendChild(p);}
+    else{
+      row.appendChild(careerCircles(id));
+      if(C.run&&C.run.race){const tb=careerTable(C.run),k=tb.findIndex(r=>r.name===ME),p=document.createElement('p');p.className='cst';
+        p.textContent='Cup in progress: '+(C.run.race+1===CUP_RACES?'final race':'race '+(C.run.race+1)+' of '+CUP_RACES)+' next · you\'re '+(k+1)+ord(k+1)+' on '+tb[k].pts+' pts';row.appendChild(p);}
+    }
+    if(open){
+      const b=document.createElement('div');b.className='cb';
+      const mk=(t,cls,fn,tid)=>{const x=document.createElement('button');x.className='btn'+(cls?' '+cls:'');x.textContent=t;x.onclick=()=>{initAudio();fn();};if(tid)x.dataset.t=tid;b.appendChild(x);};
+      const going=!!(C.run&&C.run.race);
+      mk(going?'Continue cup':C.best===1?'Race the cup again':'Start cup',C.best===1&&!going?'':'go',()=>careerStartCup(id),'cup');
+      if(going)mk('Restart cup','',()=>careerStartCup(id,true),'restart');
+      if(careerSurvOpen(id))mk('Survival bonus','',()=>careerStartSurv(id),'surv');
+      else{const x=document.createElement('button');x.className='btn';x.disabled=true;x.dataset.t='surv';x.innerHTML='Survival bonus <span class="soon">finish the cup</span>';b.appendChild(x);}
+      row.appendChild(b);
+    }
+    L.appendChild(row);
+  });
+  const nx=CAREER_ORDER.find(id=>(CAR.cups[id]||{}).best!==1);
+  const go=L.querySelector('[data-track="'+(nx||CAREER_ORDER[0])+'"]');if(go&&menuScreen==='career')setTimeout(()=>go.scrollIntoView({block:'nearest'}),0);
+}
+// a track's results as circles: the 3 races of the cup (a podium is a gold/silver/bronze trophy, otherwise the place),
+// the cup's final place, then the Survival bonus. Shows the cup in progress, or else the best finished cup.
+function careerCircles(id){
+  const C=CAR.cups[id]||{},S=CAR.surv[id]||{},going=C.run&&C.run.race>0;
+  const src=going?{places:C.run.places||[],final:0}:(C.bestRun||(C.best?{places:[],final:C.best}:{places:[],final:0}));
+  const box=document.createElement('div');box.className='cres';
+  const lab=(t,cls)=>{const x=document.createElement('span');x.className='clab'+(cls?' '+cls:'');x.textContent=t;box.appendChild(x);};
+  const dot=(p,cls,title,lock)=>{const x=document.createElement('span');x.className='cc'+(cls?' '+cls:'');x.title=title;
+    if(lock){x.classList.add('cempty');x.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4.5" y="9" width="11" height="8" rx="2" fill="#9aa3bd"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9" fill="none" stroke="#9aa3bd" stroke-width="2"/></svg>';}
+    else if(!p){x.classList.add('cempty');x.textContent='–';}
+    else if(p<=3){x.classList.add('p'+p);x.innerHTML=SVG_CUP(MEDAL(p));}
+    else x.textContent=p+ord(p);
+    x.setAttribute('aria-label',title+(lock?': locked':p?': '+p+ord(p):': not raced'));box.appendChild(x);};
+  lab('Cup');
+  for(let k=0;k<CUP_RACES;k++)dot(src.places[k]||0,going&&k===src.places.length?'next':'','Race '+(k+1));
+  const eq=document.createElement('span');eq.className='csep';eq.textContent='=';box.appendChild(eq);
+  dot(src.final||0,'fin','Cup result');
+  lab('Survival','sv');
+  dot(S.best||0,'fin','Survival bonus',!careerSurvOpen(id));
+  return box;
+}
+function careerMenuSub(){
+  const P=careerProgress(),nx=CAREER_ORDER.find(id=>(CAR.cups[id]||{}).best!==1&&careerUnlocked(id));
+  return P.n?P.pct+'% complete'+(nx?' · next: '+TRACKS[nx].name+' Cup':''):'Win 3-race cups to unlock every track';
+}
+
 /* ================= ACCOUNT (Supabase) ================= */
 // Accounts live in Supabase (not on the multiplayer server): sign-up with email + password, a code by email to confirm it
 // (that email doubles as the welcome email), sign-in, password reset with a code, racer name, best times, unlocked cars,
@@ -4358,7 +4856,7 @@ function acctSession(ev,session){
     if(ACC.afterAuth){const go=ACC.afterAuth;ACC.afterAuth=null;setTimeout(()=>showScreen(go),400);}
   }
   if(!ACC.uid&&prev){
-    ACC.profile=null;iapLogout();
+    ACC.profile=null;iapLogout();careerSignedOut();
     if(NET.acct&&NET.conn==='on'){netSend({t:'logout'});NET.name=null;NET.acct=false;NET.view='auth';}
   }
   acctRender();if(menuScreen==='multi')mpRender();
@@ -4377,11 +4875,12 @@ async function acctCheckUser(){
   if(!r.error||!(r.error.status>=400&&r.error.status<500))return false;
   await ACC.sb.auth.signOut({scope:'local'}).catch(()=>{});
   ACC.session=null;ACC.user=null;ACC.uid=null;ACC.profile=null;ACC.msg='';
+  careerSignedOut();
   ACC.err='You were signed out (the password was changed or the account deleted on another device). Sign in again.';acctRender();
   return true;
 }
 function acctProfile(p){
-  if(!p)return;ACC.profile=p;const sb=p.best||{},up={};
+  if(!p)return;ACC.profile=p;careerSignedIn(p.career);const sb=p.best||{},up={};
   for(const k in sb){const l=loadBest(k);if(!l||sb[k]<l){try{localStorage.setItem(bestKey(k),String(sb[k]));}catch(e){}}}
   for(const T of Object.values(TRACKS))for(const k of [T.id,T.id+'-survival']){const l=loadBest(k);if(l&&(!sb[k]||l<sb[k]-1e-3))up[k]=l;}
   if(Object.keys(up).length)ACC.sb.rpc('sync_best',{best:up}).then(r=>{if(r.data){ACC.profile=r.data;acctRender();}});
@@ -4602,12 +5101,14 @@ async function acctDelete(){
   if(!pw)return acctFail('Enter your password to confirm.');
   const chk=await ACC.sb.auth.signInWithPassword({email:ACC.user.email,password:pw});
   if(chk.error)return acctFail(acctCode(chk.error)==='invalid_credentials'?'That password is wrong.':acctErrMsg(chk.error));
+  const delUid=ACC.uid;
   const r=await ACC.sb.rpc('delete_account');
   if(r.error)return acctFail(acctErrMsg(r.error));
   if(NET.acct&&NET.conn==='on'){netSend({t:'logout'});NET.name=null;NET.acct=false;NET.view='auth';}
   ACC.edit=null;ACC.view='signin';ACC.pendEmail='';
   await ACC.sb.auth.signOut({scope:'local'}).catch(()=>{});
-  ACC.session=null;ACC.user=null;ACC.uid=null;ACC.profile=null;
+  try{localStorage.removeItem('phd-career-'+delUid);}catch(e){}
+  ACC.session=null;ACC.user=null;ACC.uid=null;ACC.profile=null;careerSignedOut();
   ACC.msg='Your account has been deleted.';
 }
 
@@ -4787,13 +5288,13 @@ function netPrewarm(){
   }catch(e){console.error(e);}
 }
 function setupOnlineCars(roster){
-  raceMode=NET.raceMode||'normal';
+  raceMode=NET.raceMode||'normal';HARD_AI=false;careerRun=null;   // an online race is never a career race
   for(const c of cars){scene.remove(c.mesh.root);scene.remove(c.mesh.shadow);dropTag(c);}
   cars.length=0;player=null;
   for(const r of roster){
     const me=r.id===NET.you,cs=me?mySel():r.car||{},mine=!!r.bot&&NET.botHost===NET.you;   // AI drivers: our game drives them if we host them
     const d=DESIGNS[cs.design]?cs.design:0,paint=/^#[0-9a-f]{6}$/i.test(cs.paint)?cs.paint:PAINTS[0],rr=Math.random;
-    const c=newCar(Object.assign({net:null,ex:undefined,name:me?'You':r.name,num:r.slot+1,design:d,dsg:DESIGNS[d],paint,rim:RIMS[cs.rim]?cs.rim:0,fin:RIM_FINS[cs.fin]?cs.fin:0,rs:rimSz(cs.rs),off:Number.isInteger(cs.off)?cs.off:0,rh:Number.isInteger(cs.rh)?cs.rh:0,ai:mine,remote:!me&&!mine,netId:r.id,slot:r.slot,buf:[],bot:!!r.bot},
+    const c=newCar(Object.assign({net:null,ex:undefined,name:me?'You':r.name,num:r.slot+1,design:d,dsg:DESIGNS[d],paint,rim:RIMS[cs.rim]?cs.rim:0,fin:RIM_FINS[cs.fin]||isHex(cs.fin)?cs.fin:0,rs:rimSz(cs.rs),off:Number.isInteger(cs.off)?cs.off:0,rh:Number.isInteger(cs.rh)?cs.rh:0,ai:mine,remote:!me&&!mine,netId:r.id,slot:r.slot,buf:[],bot:!!r.bot},
       mine?{skill:0.84+rr()*0.1,baseLane:(rr()-0.5)*5.2,draftLove:0.3+rr()*0.7}:{}));
     cars.push(c);if(me)player=c;
   }
@@ -4948,7 +5449,7 @@ function netOut(m){
 }
 function netGone(id){
   const i=cars.findIndex(k=>k.netId===id);if(i<0||cars[i]===player)return;
-  const c=cars[i];scene.remove(c.mesh.root);scene.remove(c.mesh.shadow);dropTag(c);cars.splice(i,1);$('posOf').textContent='of '+cars.length;
+  const c=cars[i];scene.remove(c.mesh.root);scene.remove(c.mesh.shadow);dropTag(c);cars.splice(i,1);
 }
 /* ---- results + vote ---- */
 function netShowResults(){
@@ -5091,7 +5592,7 @@ function init(){
   $('loading').hidden=true;onResize();
   showHome();
   requestAnimationFrame(frame);
-  window.__phd={cars,get OBS(){return OBS},get GAPS(){return GAPS},get HALFW(){return HALFW},get rinfo(){return {calls:renderer.info.render.calls,tris:renderer.info.render.triangles}},get player(){return player},get audio(){return snd},get state(){return state},get LEN(){return LEN},get minRad(){return minRad},get DROP(){return DROP},get FINISH_S(){return FINISH_S},get CORNERS(){return CORNERS},get TRACK(){return TRACK},get JUMPS(){return JUMPS},get TUNNELS(){return TUNNELS},get RH(){return RH},startRace,startQuick,input,get scene(){return scene},garageSpin:(a)=>{garage.tt.rotation.y=a;garage.userT=99;},get collCount(){return collCount},placeOnTrack,get KS(){return KS},get S(){return S},get DSA(){return DSA},sim:(sec)=>{for(let t=0;t<sec;t+=1/60)tick(1/60);},shot:(p,l)=>{camera.position.set(p[0],p[1],p[2]);camera.lookAt(l[0],l[1],l[2]);camera.updateMatrixWorld();renderer.render(scene,camera);return renderer.domElement.toDataURL('image/png');},get camera(){return camera},get NET(){return NET},netLag:(l,n)=>netLag(l,n),netRemotes:(now,dt)=>netRemotes(now,dt),newCar:(o)=>newCar(o),groundAt:(x,z)=>{const c={x,z,idx:0,d:0,along:0};c.idx=nearest(x,z,80);locate(c);return groundOf(c).h;},get countT(){return countT},get raceT(){return raceT},set noLoop(v){dbgNoLoop=v},get cars2(){return cars},get world(){return world},get PX(){return PX},get PZ(){return PZ},get RHB(){return RHB},get NX(){return NX},get NZ(){return NZ},LINEHAT:i=>LINEH[i],updateTags:()=>updateTags(),get ACC(){return ACC},get menuScreen(){return menuScreen},showScreen:n=>showScreen(n),saveBest:(t,id)=>saveBest(t,id),netSend:m=>netSend(m),iapBuy:id=>iapBuy(id),OPT,stanceFits:()=>DESIGNS.map((d,i)=>[d.name,stanceFit(carGeos(i))]),applyOpts:()=>applyOpts()};
+  window.__phd={cars,get OBS(){return OBS},get GAPS(){return GAPS},get HALFW(){return HALFW},get rinfo(){return {calls:renderer.info.render.calls,tris:renderer.info.render.triangles}},get player(){return player},get audio(){return snd},get state(){return state},get LEN(){return LEN},get minRad(){return minRad},get DROP(){return DROP},get FINISH_S(){return FINISH_S},get CORNERS(){return CORNERS},get TRACK(){return TRACK},get JUMPS(){return JUMPS},get TUNNELS(){return TUNNELS},get RH(){return RH},startRace,startQuick,input,get scene(){return scene},garageSpin:(a)=>{garage.tt.rotation.y=a;garage.userT=99;},get collCount(){return collCount},placeOnTrack,get KS(){return KS},get S(){return S},get DSA(){return DSA},sim:(sec)=>{for(let t=0;t<sec;t+=1/60)tick(1/60);},shot:(p,l)=>{camera.position.set(p[0],p[1],p[2]);camera.lookAt(l[0],l[1],l[2]);camera.updateMatrixWorld();renderer.render(scene,camera);return renderer.domElement.toDataURL('image/png');},get camera(){return camera},get NET(){return NET},netLag:(l,n)=>netLag(l,n),netRemotes:(now,dt)=>netRemotes(now,dt),newCar:(o)=>newCar(o),groundAt:(x,z)=>{const c={x,z,idx:0,d:0,along:0};c.idx=nearest(x,z,80);locate(c);return groundOf(c).h;},get countT(){return countT},get raceT(){return raceT},set noLoop(v){dbgNoLoop=v},get cars2(){return cars},get world(){return world},get PX(){return PX},get PZ(){return PZ},get RHB(){return RHB},get NX(){return NX},get NZ(){return NZ},LINEHAT:i=>LINEH[i],updateTags:()=>updateTags(),get ACC(){return ACC},get CAR(){return CAR},get HARD_AI(){return HARD_AI},get CTL(){return CTL},HARD,set HARD_AI(v){HARD_AI=v;if(v)hardAiSetup();},hits:()=>({aa:collide.aa||0,pl:collide.pl||0,rear:collide.rear||0,side:collide.side||0}),hitsReset:()=>{collide.aa=0;collide.pl=0;collide.rear=0;collide.side=0;collide.last=new Map();},get careerRun(){return careerRun},careerStartCup:(id,f)=>careerStartCup(id,f),careerStartSurv:id=>careerStartSurv(id),get menuScreen(){return menuScreen},showScreen:n=>showScreen(n),saveBest:(t,id)=>saveBest(t,id),netSend:m=>netSend(m),iapBuy:id=>iapBuy(id),OPT,stanceFits:()=>DESIGNS.map((d,i)=>[d.name,stanceFit(carGeos(i))]),applyOpts:()=>applyOpts()};
 }
 const fontsReady=(document.fonts&&document.fonts.load)?Promise.all([document.fonts.load('64px "Rammetto One"'),document.fonts.load('800 20px "M PLUS Rounded 1c"')]).catch(()=>{}):Promise.resolve();
 Promise.race([fontsReady,new Promise(r=>setTimeout(r,2500))]).then(()=>setTimeout(init,30));
