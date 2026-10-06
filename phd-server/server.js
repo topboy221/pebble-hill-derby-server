@@ -334,7 +334,8 @@ function backToLobby(L) { clearTimer(L); if (L.race) { clearInterval(L.race.snap
 function validCar(o) {
   if (!o || typeof o !== 'object') return null;
   const i = (v, m) => Number.isInteger(v) && v >= 0 && v < m ? v : 0;
-  return { design: i(o.design, 32), paint: /^#[0-9a-f]{6}$/i.test(o.paint) ? o.paint : '#c8231f', rim: i(o.rim, 32), fin: i(o.fin, 32), rs: Number.isInteger(o.rs) && o.rs >= 13 && o.rs <= 22 ? o.rs : 18, off: Number.isInteger(o.off) && o.off >= 0 && o.off <= 16 ? o.off : 0, rh: Number.isInteger(o.rh) && Math.abs(o.rh) <= 3 ? o.rh : 0 };   // rs: rim size in inches
+  // fin: a standard rim finish (index) or, for players, any rim colour ('#rrggbb'); AI cars only ever get the standard ones
+  return { design: i(o.design, 32), paint: /^#[0-9a-f]{6}$/i.test(o.paint) ? o.paint : '#c8231f', rim: i(o.rim, 32), fin: /^#[0-9a-f]{6}$/i.test(o.fin) ? o.fin.toLowerCase() : i(o.fin, 32), rs: Number.isInteger(o.rs) && o.rs >= 13 && o.rs <= 22 ? o.rs : 18, off: Number.isInteger(o.off) && o.off >= 0 && o.off <= 16 ? o.off : 0, rh: Number.isInteger(o.rh) && Math.abs(o.rh) <= 3 ? o.rh : 0 };   // rs: rim size in inches
 }
 function authed(c, name, guest, uid) {
   const key = name.toLowerCase();
