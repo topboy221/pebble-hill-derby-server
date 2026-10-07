@@ -97,7 +97,7 @@ function makeLobby(opts) {
   const surv = opts.mode === 'survival', max = surv ? SURV_PLAYERS : MAX_PLAYERS;
   const L = {
     id: code(), name: opts.name, private: !!opts.pass, salt: null, hash: null,
-    host: null, state: 'lobby', players: [], track: pick(TRACK_IDS), nextTrack: null,
+    host: null, state: 'lobby', players: [], track: pick(TRACK_IDS), nextTrack: null, races: 0,
     timer: null, timerEnds: 0, race: null, vote: null, created: Date.now(), mode: surv ? 'survival' : 'normal', max, bots: surv, botPool: makeBots(max - 1),
   };
   if (opts.pass) { L.salt = crypto.randomBytes(12).toString('hex'); L.hash = hashPass(opts.pass, L.salt); }
@@ -106,7 +106,7 @@ function makeLobby(opts) {
 }
 function lobbyInfo(L) {
   return {
-    id: L.id, name: L.name, locked: L.private, host: L.host, state: L.state, track: L.nextTrack || null,
+    id: L.id, name: L.name, locked: L.private, host: L.host, state: L.state, track: L.nextTrack || null, first: !L.races,
     countdown: L.timer ? Math.max(0, Math.ceil((L.timerEnds - Date.now()) / 1000)) : null,
     players: L.players.map(c => ({ id: c.id, name: c.name, guest: c.guest, car: c.car, ready: !!c.ready, racing: !!(L.race && L.race.racers.has(c.id)) })),
     max: L.max, mode: L.mode, bots: !!L.bots, botList: botsFor(L, L.players.length).map(b => ({ name: b.name, paint: b.car.paint })),
@@ -166,7 +166,7 @@ function startRace(L) {
   if (L.state !== 'lobby' && L.state !== 'results') return;
   if (!L.players.length) return;
   clearTimer(L); L.vote = null;
-  const track = L.nextTrack || pick(TRACK_IDS); L.nextTrack = null; L.track = track;
+  const track = L.nextTrack || pick(TRACK_IDS); L.nextTrack = null; L.track = track; L.races++;
   // someone's connection has gone quiet (phone locked, network switch): drop them if it's been long,
   // otherwise hold the start a moment so their phone can reconnect and keep its seat
   const now0 = Date.now();
@@ -299,7 +299,7 @@ function endRace(L) {
     .map((r, i) => ({ id: r.id, name: r.name, guest: r.guest, bot: !!r.bot, paint: r.car && r.car.paint, time: r.fin || null, place: i + 1 }));
   L.lastRows = rows;
   L.state = 'results';
-  const opts = TRACK_IDS.length >= 2 ? TRACK_IDS.slice().sort(() => Math.random() - 0.5).slice(0, 2) : [TRACK_IDS[0], TRACK_IDS[0]];
+  const opts = TRACK_IDS.slice().sort(() => Math.random() - 0.5).slice(0, Math.min(3, TRACK_IDS.length));   // three tracks to vote on
   L.vote = { options: opts, ballots: new Map(), ends: Date.now() + TIMES.vote * 1000 };
   broadcast(L, { t: 'results', rows, vote: voteInfo(L) });
   setTimer(L, TIMES.vote, () => closeVote(L));
@@ -428,6 +428,10 @@ function handle(c, m) {
     case 'bst': return onBotStates(c, m.s);
     case 'bots': { const L = c.lobby; if (!L || L.host !== c.id) return; L.bots = !!m.on; checkAutoStart(L); pushLobby(L); return; }   // Survival starts with AI on, but the host can race friends only
     case 'vote': return onVote(c, m.track);
+    case 'pick': {                                          // the host picks the track for the lobby's first race (null = random)
+      const L = c.lobby; if (!L || L.host !== c.id || L.state !== 'lobby' || L.races) return;
+      if (m.track != null && !TRACK_IDS.includes(m.track)) return;
+      L.nextTrack = m.track || null; pushLobby(L); return; }
     case 'hit': {                                           // a bump: pass the push on to the car that was hit
       const L = c.lobby; if (!L || L.state !== 'race' || !L.race.racers.has(c.id)) return;
       const j = Array.isArray(m.j) ? m.j : [], jx = +j[0], jz = +j[1], r = +m.r;
@@ -489,6 +493,14 @@ const server = http.createServer((req, res) => {
     return;
   }
   if (url === '/hooks/revenuecat') return revenuecatHook(req, res);
+  // plain pages next to the game: the privacy policy (needed by AdMob and the app stores) and AdMob's app-ads.txt
+  const PAGES = { '/privacy': ['privacy.html', 'text/html; charset=utf-8'], '/privacy.html': ['privacy.html', 'text/html; charset=utf-8'], '/app-ads.txt': ['app-ads.txt', 'text/plain; charset=utf-8'] };
+  if (PAGES[url]) {
+    return fs.readFile(path.join(__dirname, 'public', PAGES[url][0]), (err, buf) => {
+      if (err) { res.writeHead(404); return res.end('Not found'); }
+      res.writeHead(200, { 'Content-Type': PAGES[url][1], 'Cache-Control': 'public, max-age=300' }); res.end(buf);
+    });
+  }
   if (url === '/health') { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); return res.end(JSON.stringify({ ok: true, online: online.size, lobbies: lobbies.size, accounts: !!(SB_URL && SB_KEY), purchases: !!(RC_AUTH && SB_URL && SB_SECRET) })); }
   res.writeHead(404); res.end('Not found');
 });
