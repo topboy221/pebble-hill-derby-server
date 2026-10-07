@@ -406,6 +406,7 @@ function handle(c, m) {
     case 'create': {
       c.car = validCar(m.car) || c.car;
       const name = clean(m.name, 24) || (c.name + '\'s server'), pass = String(m.pass || '');
+      if (nameBad(name)) return send(c, { t: 'error', where: 'create', msg: 'That server name isn\'t allowed. Pick another one.' });
       if (pass.length < 3 || pass.length > 32) return send(c, { t: 'error', where: 'create', msg: 'Password: 3–32 characters.' });
       return joinLobby(c, makeLobby({ name, pass, mode: m.mode === 'survival' ? 'survival' : 'normal' }));
     }
@@ -477,6 +478,17 @@ function revenuecatHook(req, res) {
       return reply(200, { ok: true, result: out });   // anything but 200 and RevenueCat tries again later
     } catch (e) { console.error('[revenuecat] ' + e.message); return reply(502, { error: 'Could not reach the database' }); }
   });
+}
+
+// names that aren't allowed (swearing, slurs, sexual, hateful), in the languages of the game. The same list is in the
+// Supabase database (which has the final say) and the game server. Leetspeak (0=o, 1=i, 3=e…) and doubled letters don't get round it.
+const BAD_ROOTS=["f+u+c+k", "fuk(?![uoa])", "fvck", "fcuk", "phuck", "motherf", "sh+i+t(?!a)", "cunt", "n+i+g+g", "n+i+g+(a+h?|u+h)$", "n+i+g+e+r(?!ia)", "nigr", "f+a+g+o+t", "kike", "chink", "wetback", "raghead", "towelhead", "zipperhead", "beaner", "r+e+t+a+r+d", "tranny", "whore", "slut", "bitch", "bastard", "asshole", "dickhead", "pussy", "penis", "vagina", "dildo", "porn", "(^|[^e])rapist", "pa?edophil", "molest", "hitler", "siegheil", "heilhit", "whitepower", "whitepride", "nazi$", "nazis$", "kkk", "killyourself", "wanker", "cazzo", "minchia", "stronz", "puttan(?!esc)", "vaffancul", "fancul", "culattone", "frocio", "ricchion", "(^|[^e])negro(?!n)", "terrone", "zoccola", "coglion", "porcodio", "porcamadonna", "dioporco", "diocane", "mignotta", "bastardo", "pendejo", "cabron", "maricon", "gilipollas", "mierda", "culero", "chinga", "sudaca", "hijodeputa", "putain", "salope", "connard", "connasse", "encule", "bougnoul", "salaud", "(^|[^e])negre", "niquetamere", "scheiss", "ficken", "fotze", "hurensohn", "wichser", "schwuchtel", "neger", "spast", "missgeburt", "arschloch", "kanake", "caralho", "buceta", "viado", "merda", "cuzao", "filhodaputa"].map(p=>new RegExp(p)),BAD_EXACT=new Set(["ass", "arse", "cum", "fag", "fags", "coon", "dyke", "cock", "rape", "pedo", "paedo", "spic", "puta", "puto", "marica", "figa", "pede", "nique", "foda", "tits", "dick", "anal", "anus", "nazi", "nazis", "sex", "wank", "twat", "piss", "jap", "gook", "paki", "nig", "negr", "porra", "troia", "culo", "kys", "fdp", "putas", "putos"]);
+function nameBad(n){
+  const raw=String(n||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();if(/1488/.test(raw))return true;
+  const leet=s=>s.replace(/[0134578]/g,d=>'oieastb'['0134578'.indexOf(d)]).replace(/[^a-z]/g,''),sq=s=>s.replace(/(.)\1+/g,'$1');
+  const t=leet(raw),c=sq(t);if(BAD_ROOTS.some(r=>r.test(t)||r.test(c)))return true;
+  if(BAD_EXACT.has(t)||BAD_EXACT.has(c))return true;
+  return (String(n||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').match(/[A-Z]?[a-z0-9]+|[A-Z0-9]+(?![a-z])/g)||[]).some(w=>{const x=leet(w.toLowerCase());return BAD_EXACT.has(x)||BAD_EXACT.has(sq(x));});
 }
 
 /* ---------------- http + websocket ---------------- */
