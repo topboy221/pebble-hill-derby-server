@@ -1,4 +1,4 @@
-// Pebble Hill Derby — multiplayer server
+// Soapcube Racing — multiplayer server
 // One Node process: serves the game page, signs players in (as a guest, or with their Supabase account),
 // lobbies (up to 12 racers, or 50 in Survival; public quick-join or password-protected private servers),
 // relays car positions during races, collects results and runs the next-track vote.
@@ -548,4 +548,4 @@ setInterval(() => {
   for (const [k, P] of parked) if (P.until < now) parked.delete(k);
 }, 5000);
 
-server.listen(PORT, () => console.log('Pebble Hill Derby server on http://localhost:' + PORT));
+server.listen(PORT, () => console.log('Soapcube Racing server on http://localhost:' + PORT));
