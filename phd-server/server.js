@@ -2,7 +2,8 @@
 // One Node process: serves the game page, signs players in (as a guest, or with their Supabase account),
 // lobbies (up to 12 racers, or 50 in Survival; public quick-join or password-protected private servers),
 // relays car positions during races, collects results and runs the next-track vote.
-// Accounts, emails and saved progress live in Supabase; purchases come in from RevenueCat (/hooks/revenuecat).
+// Accounts, emails, saved progress and money live in Supabase; purchases come in from RevenueCat (/hooks/revenuecat).
+// After each online race this server pays the signed-in racers their cash prize (the game itself can't).
 'use strict';
 const http = require('http');
 const fs = require('fs');
@@ -34,7 +35,8 @@ const RACE_IDLE_MS = 10000;                       // a racer whose car hasn't re
 // Settings (Render → Environment):
 //   SUPABASE_URL              https://<project>.supabase.co
 //   SUPABASE_PUBLISHABLE_KEY  the publishable (or legacy anon) key: the same one that's in the game
-//   SUPABASE_SECRET_KEY       the secret (or legacy service_role) key: only for recording purchases. Never put it in the game.
+//   SUPABASE_SECRET_KEY       the secret (or legacy service_role) key: for recording purchases and paying online race prizes.
+//                             Never put it in the game.
 const SB_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
 const SB_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '';
 const SB_SECRET = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -186,7 +188,8 @@ function startRace(L) {
     racers.forEach((c, i) => { grid[c.id] = slots[i]; }); bots.forEach((b, k) => { grid[b.id] = slots[racers.length + k]; });
   }
   L.race = {
-    track, grid, racers: new Map(racers.map(c => [c.id, { id: c.id, name: c.name, guest: c.guest, car: c.car, fin: null, lastS: 0 }])),
+    track, grid, racers: new Map(racers.map(c => [c.id, { id: c.id, name: c.name, guest: c.guest, key: c.key, car: c.car, fin: null, lastS: 0 }])),
+    rid: L.id + '-' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex'),   // names this race when paying prizes (each one is paid once)
     loaded: new Set(), states: new Map(), dirty: new Set(), start: 0, firstFin: 0, snapTimer: null, endTimer: null, botHost: bots.length ? L.host : null,
   };
   for (const b of bots) L.race.racers.set(b.id, { id: b.id, name: b.name, guest: false, bot: true, car: b.car, fin: null, lastS: 0 });
@@ -302,8 +305,29 @@ function endRace(L) {
   const opts = TRACK_IDS.slice().sort(() => Math.random() - 0.5).slice(0, Math.min(3, TRACK_IDS.length));   // three tracks to vote on
   L.vote = { options: opts, ballots: new Map(), ends: Date.now() + TIMES.vote * 1000 };
   broadcast(L, { t: 'results', rows, vote: voteInfo(L) });
+  payPrizes(L, rows);
   setTimer(L, TIMES.vote, () => closeVote(L));
   pushLobby(L);
+}
+// cash prizes: every signed-in racer who took part (not guests, AI, or anyone taken out for going silent) gets paid by the
+// database for their place in a field of this many cars; they're told their winnings and new balance
+function payPrizes(L, rows) {
+  if (!SB_URL || !SB_SECRET || !L.race) return;
+  const race = L.race, cars = rows.length; if (cars < 2) return;
+  for (const row of rows) {
+    const r = race.racers.get(row.id); if (!r || r.bot || r.guest || !r.key || r.dnf) continue;
+    fetch(SB_URL + '/rest/v1/rpc/award_online_race', { method: 'POST', signal: AbortSignal.timeout(15000),
+      headers: { apikey: SB_SECRET, Authorization: 'Bearer ' + SB_SECRET, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player: r.key, race: race.rid, place: row.place, cars, finished: !!r.fin, track: race.track }) })
+      .then(async res => {
+        const txt = await res.text(); if (!res.ok) throw new Error(res.status + ' ' + txt.slice(0, 200));
+        const out = JSON.parse(txt || '{}');
+        // tell the player, wherever they are now (still in the lobby, or back in the menus on a new connection)
+        const c = [...clients].find(o => o.key === r.key && o.ws.readyState === 1);
+        if (c) send(c, { t: 'wallet', earned: out.earned || 0, cash: out.cash, gold: out.gold, place: row.place, cars });
+      })
+      .catch(e => console.error('[prizes] ' + r.name + ': ' + e.message));
+  }
 }
 function voteInfo(L) {
   const V = L.vote; if (!V) return null;
