@@ -32,6 +32,11 @@ button:focus-visible{outline:3px solid var(--sky);outline-offset:3px}
 #garage{pointer-events:none}
 #menubg{background:#8ec2e6}
 #menubg svg{display:block}
+/* multiplayer: a spinning wheel where the menu buttons go, while the server connects */
+.mpspin{display:grid;place-items:center;min-height:min(240px,calc(100vh - var(--st) - var(--sb) - 20px))}
+.mpspin svg{width:clamp(64px,19vh,90px);height:auto;filter:drop-shadow(0 4px 0 rgba(30,35,64,.35));animation:mpspin .9s linear infinite}
+@keyframes mpspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.mpspin svg{animation-duration:2.4s}}
 /* menu backgrounds: single player (and its screens), multiplayer (and the lobby), options, account */
 #menubg .mbgimg{position:absolute;inset:0;display:none;background:#8ec2e6 center/cover no-repeat}
 #menubg[data-bg] .mbgimg{display:block}
@@ -5621,10 +5626,11 @@ function mpRender(){
   const P=$('mpPanel');if(!P)return;P.innerHTML='';
   const st=$('mpStatus');
   if(NET.conn!=='on'){
-    if(NET.conn==='connecting'&&!P.children.length){const c=document.createElement('div');c.className='card mpform';const h=document.createElement('h3');h.className='disp';h.textContent=NET.waking?'Waking up…':'Connecting…';c.appendChild(h);P.appendChild(c);}
-    const host=webAddr(NET.url).replace(/^https?:\/\//,'');
-    st.translate=true;st.textContent=NET.conn==='connecting'?(NET.probe==='up'&&NET.tries>=2?'The server at '+host+' is awake but the live connection isn\'t going through from this page.':NET.waking?'Waking up '+host+'… free servers nap when nobody is racing, this can take up to a minute.':'Connecting to '+host+'…'):(NET.err||'Not connected.');
-    if(NET.conn==='connecting'&&NET.tries>=2)mpHelp(P);
+    // while the server connects (or wakes up): just a spinning wheel where the menu buttons will appear, no text
+    if(NET.conn==='connecting'){const w=document.createElement('div');w.className='mpspin';w.setAttribute('role','status');w.setAttribute('aria-label','Connecting…');
+      w.innerHTML='<svg viewBox="0 0 64 64" width="64" height="64" aria-hidden="true"><circle cx="32" cy="32" r="29" fill="#1e2340"/><circle cx="32" cy="32" r="25" fill="none" stroke="#3a3f5c" stroke-width="3" stroke-dasharray="4 5"/><circle cx="32" cy="32" r="17" fill="#d6dde7" stroke="#1e2340" stroke-width="3"/>'+[0,72,144,216,288].map(a=>'<path d="M32 32 L32 17.5" stroke="#1e2340" stroke-width="5" stroke-linecap="round" transform="rotate('+a+' 32 32)"/>').join('')+'<circle cx="32" cy="32" r="5.5" fill="#e8453c" stroke="#1e2340" stroke-width="2.5"/></svg>';
+      P.appendChild(w);st.textContent='';return;}
+    st.translate=true;st.textContent=NET.err||'Not connected.';
     if(NET.conn==='off'){
       const c=document.createElement('div');c.className='card mpform';const h=document.createElement('h3');h.className='disp';h.textContent='Offline';c.appendChild(h);
       const p=document.createElement('p');p.className='muted';p.textContent='Can\'t reach the game server. Check your connection and try again.';c.appendChild(p);
