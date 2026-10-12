@@ -52,7 +52,14 @@ jobs:
           if [ -z "$GAME" ]; then GAME=$(cd "$GITHUB_WORKSPACE" && find . -name 'pebble-hill-derby.html' -not -path '*/node_modules/*' -not -path '*/app/*' | head -n 1); [ -n "$GAME" ] && GAME="$GITHUB_WORKSPACE/$GAME"; fi
           if [ -z "$GAME" ]; then echo "::error::Can't find pebble-hill-derby.html anywhere in the repository."; exit 1; fi
           echo "Game file: $GAME ($(wc -c < "$GAME") bytes)"
-          mkdir -p www && cp "$GAME" www/index.html
+          mkdir -p www
+          # the game file is a page body: give it the same document head the game server adds
+          # (UTF-8 text, so characters like – and · show right; phone screen width; full screen)
+          node -e '
+            const fs=require("fs");let h=fs.readFileSync(process.argv[1],"utf8");
+            if(!/^\s*<!doctype/i.test(h))h="<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover\"><meta name=\"theme-color\" content=\"#8ec2e6\"></head><body>"+h+"</body></html>";
+            fs.writeFileSync("www/index.html",h);' "$GAME"
+          head -c 200 www/index.html; echo
           npx cap sync android
 
       - name: Build the APK
