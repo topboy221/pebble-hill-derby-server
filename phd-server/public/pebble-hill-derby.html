@@ -4735,6 +4735,7 @@ function showScreen(name){
   if(name==='multi')openMulti();
   if(name==='lobby')lobbyRender();
   if(name==='options'||name==='tracks')applyOpts();
+  if(name==='options')adPrivacyButton();
   if(name==='account')acctOpen();
   if(name==='career')careerRender();
   if(name==='timeattack')taRender();
@@ -4923,52 +4924,45 @@ function manualReset(){if(!state||state!=='race'||!player||player.finished)retur
   const w=resetWait();if(w>0){flash('Reset recharging',Math.ceil(w)+' s','white');return;}
   lastManualReset=raceT;respawn(player,true);}
 $('resetBtn').onclick=manualReset;
-/* ================= ADS: a full-screen AdMob ad at the end of every other race (single player and multiplayer)
-   Only inside the iOS / Android app, through the Capacitor plugin @capacitor-community/admob. In a browser: no ads.
+/* ================= ADS: a full-screen Yodo1 MAS ad at the end of every other race (single player and multiplayer)
+   Only inside the iOS / Android app, through the small native plugin "Yodo1Mas" (folder capacitor-yodo1-mas, README step 6).
+   In a browser: no ads.
    - Single player: the ad plays when you leave the results (Race again / Next / Menu).
    - Multiplayer: the ad plays a moment after you cross the line, while the others are still finishing.
-   Paste your interstitial ad unit IDs from AdMob below (they look like ca-app-pub-1234567890123456/1234567890).
-   While ADS_TEST is true, Google's own test ads are shown (and the test units are used when yours are empty). */
-const ADMOB_ANDROID_INTERSTITIAL='';   // AdMob → Apps → (Android app) → Ad units → Interstitial
-const ADMOB_IOS_INTERSTITIAL='';       // AdMob → Apps → (iOS app) → Ad units → Interstitial
-const ADS_TEST=true;                   // set to false for the store release, once your real ad unit IDs are in
-const AD_EVERY=2;                      // an ad after every 2nd race
-const ADMOB_TEST_UNITS={android:'ca-app-pub-3940256099942544/1033173712',ios:'ca-app-pub-3940256099942544/4411468910'};   // Google's public test units
-const ADS={on:false,ready:false,loading:false,busy:false,pend:false,n:0,shown:0,log:[],P:null,unit:'',wait:null,done:null};
+   - The first time, MAS shows its own privacy window (age + consent, which covers GDPR, CCPA and COPPA); on iPhone, Apple's
+     "allow tracking?" question too. EU/UK players can change their ad choices later in Options → Ad privacy choices.
+   Paste your app keys from the MAS dashboard below. Test with MAS's test mode before release (README step 6). */
+const YODO1_APP_KEY_ANDROID=window.PHD_TEST_MAS_KEY||'XrUCntZjB3';   // MAS dashboard → Games → (Android game) → App Key
+const YODO1_APP_KEY_IOS=window.PHD_TEST_MAS_KEY||'RMBrSj19Sy';       // MAS dashboard → Games → (iOS game) → App Key
+const AD_EVERY=2;                 // an ad after every 2nd race
+const AD_PLACEMENT='race_end';    // shows up in the MAS reports
+const ADS={on:false,ready:false,busy:false,pend:false,n:0,shown:0,log:[],P:null,wait:null};
 try{ADS.n=+localStorage.getItem('phd-adn')||0;}catch(e){}
-function admobPlugin(){const C=window.Capacitor;if(!C||!C.isNativePlatform||!C.isNativePlatform())return null;
-  return (C.Plugins&&C.Plugins.AdMob)||(C.registerPlugin?C.registerPlugin('AdMob'):null);}
-// start-up inside the app: privacy consent (EU/UK), Apple's tracking question, then AdMob itself
+function masPlugin(){const C=window.Capacitor;if(!C||!C.isNativePlatform||!C.isNativePlatform())return null;
+  return (C.Plugins&&C.Plugins.Yodo1Mas)||(C.registerPlugin?C.registerPlugin('Yodo1Mas'):null);}
+// start-up inside the app: MAS shows its privacy window the first time, then loads the first ad (and the next one after each ad)
 async function adsInit(){
-  const P=admobPlugin();if(!P)return;
-  const plat=window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='ios'?'ios':'android';
-  ADS.unit=(plat==='ios'?ADMOB_IOS_INTERSTITIAL:ADMOB_ANDROID_INTERSTITIAL)||(ADS_TEST?ADMOB_TEST_UNITS[plat]:'');
-  if(!ADS.unit)return;
+  const P=masPlugin();if(!P)return;
+  const key=window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='ios'?YODO1_APP_KEY_IOS:YODO1_APP_KEY_ANDROID;
+  if(!key){ADS.log.push('no app key');return;}
   try{
-    if(plat==='ios'){const t=await P.trackingAuthorizationStatus();if(t&&t.status==='notDetermined')await P.requestTrackingAuthorization();}
-    let ci=await P.requestConsentInfo();
-    // players under the GDPR can change their ad choices later: Options → Ad privacy choices
-    if(ci&&ci.privacyOptionsRequirementStatus==='REQUIRED'){const b=$('adPrivBtn');b.hidden=false;b.onclick=()=>{P.showPrivacyOptionsForm().catch(()=>{});};}
-    if(ci&&ci.isConsentFormAvailable&&ci.status==='REQUIRED')ci=await P.showConsentForm();
-    if(ci&&ci.canRequestAds===false){ADS.log.push('no consent');return;}
-    await P.initialize({initializeForTesting:ADS_TEST});
-    P.addListener('interstitialAdLoaded',()=>{ADS.ready=true;ADS.loading=false;if(ADS.wait)ADS.wait();});
-    P.addListener('interstitialAdFailedToLoad',()=>{ADS.ready=false;ADS.loading=false;});
-    P.addListener('interstitialAdDismissed',()=>{if(ADS.done)ADS.done('viewed');});
-    P.addListener('interstitialAdFailedToShow',()=>{if(ADS.done)ADS.done('failed');});
+    P.addListener('interstitialLoaded',()=>{ADS.ready=true;if(ADS.wait)ADS.wait();});
+    P.addListener('interstitialFailedToLoad',()=>{ADS.ready=false;});
+    await P.start({appKey:key});
     ADS.P=P;ADS.on=true;
-    if(ADS.n%AD_EVERY===AD_EVERY-1)adsLoad();   // the next race earns an ad: get it ready
-  }catch(e){console.warn('ads',e);}
+    const st=await P.isLoaded().catch(()=>null);if(st&&st.loaded)ADS.ready=true;
+    adPrivacyButton();
+  }catch(e){console.warn('ads',e);ADS.log.push('start failed');}
 }
-function adsLoad(){
-  if(!ADS.on||ADS.ready||ADS.loading)return;ADS.loading=true;
-  ADS.P.prepareInterstitial({adId:ADS.unit,isTesting:ADS_TEST}).then(()=>{ADS.ready=true;ADS.loading=false;if(ADS.wait)ADS.wait();}).catch(()=>{ADS.loading=false;});
+// Options → "Ad privacy choices": only for players who need it (EU/UK, Google's consent form)
+function adPrivacyButton(){
+  const b=$('adPrivBtn');if(!ADS.P||!b)return;
+  ADS.P.privacyOptions().then(r=>{b.hidden=!(r&&r.required);b.onclick=()=>{ADS.P.showPrivacyOptions().catch(()=>{});};}).catch(()=>{});
 }
 // a race was finished: count it, and every AD_EVERY-th one earns an ad at the next break
 function adRaceDone(){
   ADS.n++;try{localStorage.setItem('phd-adn',String(ADS.n));}catch(e){}
-  if(ADS.n%AD_EVERY===0&&ADS.on){ADS.pend=true;adsLoad();}
-  else if(ADS.n%AD_EVERY===AD_EVERY-1)adsLoad();   // the next race earns one: load it in the background now
+  if(ADS.n%AD_EVERY===0&&ADS.on)ADS.pend=true;
 }
 // play the waiting ad (if any), then carry on. `then` always runs exactly once, ad or no ad.
 function adShow(name,then){
@@ -4976,15 +4970,15 @@ function adShow(name,then){
   if(!ADS.pend||!ADS.on){if(then)then();return;}
   ADS.pend=false;ADS.busy=true;
   let fin=false,tm=null;
-  const finish=why=>{if(fin)return;fin=true;clearTimeout(tm);ADS.busy=false;ADS.wait=null;ADS.done=null;ADS.log.push(name+':'+why);
+  const finish=why=>{if(fin)return;fin=true;clearTimeout(tm);ADS.busy=false;ADS.wait=null;ADS.log.push(name+':'+why);
     if(snd)snd.master.gain.value=muted?0:0.7*OPT.vol;if(AC&&AC.state==='suspended'&&!paused)AC.resume();
     if(then)then();};
-  const play=()=>{ADS.wait=null;clearTimeout(tm);ADS.ready=false;ADS.shown++;
+  const play=()=>{ADS.wait=null;clearTimeout(tm);ADS.ready=false;
     if(snd)snd.master.gain.value=0;releaseAll();
-    ADS.done=finish;tm=setTimeout(()=>finish('stuck'),120000);
-    ADS.P.showInterstitial().catch(()=>finish('failed'));};
+    tm=setTimeout(()=>finish('stuck'),120000);
+    ADS.P.showInterstitial({placement:AD_PLACEMENT}).then(r=>{if(r&&r.shown)ADS.shown++;finish(r&&r.shown?'viewed':'failed');}).catch(()=>finish('failed'));};
   if(ADS.ready)return play();
-  adsLoad();ADS.wait=play;tm=setTimeout(()=>finish('not ready'),2500);   // not loaded yet: wait a moment, never keep the player stuck
+  ADS.wait=play;tm=setTimeout(()=>finish('not ready'),2500);   // not loaded yet: wait a moment, never keep the player stuck
 }
 setTimeout(adsInit,1500);
 function setMute(m){muted=m;try{localStorage.setItem('phd-mute',m?'1':'0');}catch(e){}if(snd)snd.master.gain.value=m?0:0.7*OPT.vol;$('sndWave').style.opacity=m?0.15:1;}
