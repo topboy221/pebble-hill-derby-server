@@ -1,17 +1,11 @@
 # Builds the Soapcube Racing Android test app (an APK you install on your phone).
 # This file must be in the repository's top folder, at .github/workflows/ (GitHub ignores it anywhere else).
-# Runs by itself whenever the game, the app or the ads plugin changes, or by hand: Actions → "Android test app" → Run workflow.
+# Runs only when you start it: Actions → "Android test app" → Run workflow.
 # The APK is under the finished run → Artifacts → soapcube-racing-apk (a zip with app-debug.apk inside).
 name: Android test app
 
 on:
-  workflow_dispatch:
-  push:
-    paths:
-      - '**/pebble-hill-derby.html'
-      - '**/app/**'
-      - '**/capacitor-yodo1-mas/**'
-      - '.github/workflows/**'
+  workflow_dispatch:   # only when you start it: Actions → Android test app → Run workflow
 
 jobs:
   apk:
