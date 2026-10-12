@@ -42,6 +42,8 @@ button:focus-visible{outline:3px solid var(--sky);outline-offset:3px}
 .wallet.out b{color:#8a90a6}
 .vh{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 #walletBox{z-index:9}
+/* TESTING ONLY (app): how the ads are doing, in Options */
+.addiag{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px}.addiag p{margin:0;font-size:11px;line-height:1.35;color:#4a5170;flex:1 1 220px}.addiag .btn{padding:5px 10px;font-size:12px}
 .wcard .glab{margin-top:6px}
 .wcard .cph{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
 .wcard h2{margin:0}
@@ -535,6 +537,7 @@ tr.me td{background:#dcecfa}
       </div>
       <div class="glab">Privacy</div>
       <div class="lrow privrow"><a class="btn" id="privLink" href="https://soapcuberacing.world/privacy" target="_blank" rel="noopener">Privacy policy</a><button class="btn" id="adPrivBtn" hidden>Ad privacy choices</button></div>
+      <div class="addiag" id="adDiag" hidden translate="no"><p id="adDiagTxt"></p><button class="btn" id="adTestBtn">Show an ad now</button></div>
       </div>
       <div class="optpane" id="optCtl" hidden>
         <div class="glab">Touch buttons</div>
@@ -4307,7 +4310,8 @@ document.querySelectorAll('[data-otab]').forEach(b=>b.addEventListener('click',(
   const t=b.dataset.otab;document.querySelectorAll('[data-otab]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));$('optBody').scrollTop=0;
   $('optGen').hidden=t!=='gen';$('optCtl').hidden=t!=='ctl';}));
 ctlApply();
-// TESTING ONLY (remove before release): full screen in a phone browser
+// TESTING ONLY (remove before release): full screen in a phone browser. Not needed inside the app (it's always full screen).
+if(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform())$('fsBtn').hidden=true;
 $('fsBtn').onclick=()=>{
   const d=document,el=d.documentElement,on=d.fullscreenElement||d.webkitFullscreenElement;
   if(on){(d.exitFullscreen||d.webkitExitFullscreen).call(d);return;}
@@ -4735,7 +4739,7 @@ function showScreen(name){
   if(name==='multi')openMulti();
   if(name==='lobby')lobbyRender();
   if(name==='options'||name==='tracks')applyOpts();
-  if(name==='options')adPrivacyButton();
+  if(name==='options'){adPrivacyButton();adDiag();}
   if(name==='account')acctOpen();
   if(name==='career')careerRender();
   if(name==='timeattack')taRender();
@@ -4809,6 +4813,7 @@ function startRace(){
   {const cl=!NET.online&&careerRaceLabel();if(cl){raceLabel=cl[1];flash(cl[0],cl[1]);}}
   careerRaceStarted();
   walletRaceStart();
+  ADS.counted=false;
   const rw=$('resWrap');if(rw)rw.scrollTop=0;
 }
 function togglePause(){
@@ -4905,13 +4910,15 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('cpk').hidden)cp
 $('againBtn').onclick=()=>adShow('again',()=>{if(careerRun)return careerAgain();setupCars();startRace();});
 $('garageBtn').onclick=()=>{if(NET.results||NET.lobby){netLeave();return;}adShow('menu',()=>{if(careerRun){showScreen('career');return;}if(raceMode==='timeattack'){showScreen('timeattack');return;}showHome();});};
 $('resumeBtn').onclick=togglePause;
-$('restartBtn').onclick=()=>{paused=false;if(AC)AC.resume();startRace();};
+$('restartBtn').onclick=()=>{adDriveEnd();adShow('restart',()=>{paused=false;if(AC)AC.resume();startRace();});};
 let quitArmed=false;
 $('quitBtn').onclick=()=>{
   if(careerRun&&careerRun.kind==='cup'&&state!=='menu'&&!resultsShown){   // leaving a cup race = retiring: ask once more
     if(!quitArmed){quitArmed=true;$('quitBtn').textContent='Tap again: retire, last place';return;}
-    quitArmed=false;paused=false;if(AC)AC.resume();careerRetire();showScreen('career');return;}
-  paused=false;if(AC)AC.resume();if(NET.inRace||NET.results||NET.lobby){netLeave();return;}if(careerRun){showScreen('career');return;}if(raceMode==='timeattack'){showScreen('timeattack');return;}showHome();};
+    quitArmed=false;adDriveEnd();adShow('retire',()=>{paused=false;if(AC)AC.resume();careerRetire();showScreen('career');});return;}
+  adDriveEnd();
+  if(NET.inRace||NET.results||NET.lobby){paused=false;if(AC)AC.resume();netLeave();adShow('leave');return;}
+  adShow('quit',()=>{paused=false;if(AC)AC.resume();if(careerRun){showScreen('career');return;}if(raceMode==='timeattack'){showScreen('timeattack');return;}showHome();});};
 $('pauseBtn').onclick=togglePause;
 $('camBtn').onclick=cycleCam;
 // manual reset: only once you're past the START arch (no resetting on the grid or the start ramp)
@@ -4936,34 +4943,62 @@ const YODO1_APP_KEY_ANDROID=window.PHD_TEST_MAS_KEY||'XrUCntZjB3';   // MAS dash
 const YODO1_APP_KEY_IOS=window.PHD_TEST_MAS_KEY||'RMBrSj19Sy';       // MAS dashboard → Games → (iOS game) → App Key
 const AD_EVERY=2;                 // an ad after every 2nd race
 const AD_PLACEMENT='race_end';    // shows up in the MAS reports
-const ADS={on:false,ready:false,busy:false,pend:false,n:0,shown:0,log:[],P:null,wait:null};
+const ADS={on:false,ready:false,busy:false,pend:false,n:0,shown:0,log:[],P:null,wait:null,st:'off',err:'',loads:0,fails:0};
 try{ADS.n=+localStorage.getItem('phd-adn')||0;}catch(e){}
-function masPlugin(){const C=window.Capacitor;if(!C||!C.isNativePlatform||!C.isNativePlatform())return null;
+// ?adtest in the page address (browser only): a stand-in ad, to check when ads come without building the app
+function adTestPlugin(){
+  let on=false;try{on=/[?&]adtest\b/.test(location.search)||localStorage.getItem('phd-adtest')==='1';}catch(e){}
+  if(!on)return null;try{localStorage.setItem('phd-adtest','1');}catch(e){}
+  const L={},emit=n=>(L[n]||[]).forEach(f=>f({}));let loaded=false;const load=()=>setTimeout(()=>{loaded=true;emit('interstitialLoaded');},500);
+  return {addListener:(n,f)=>{(L[n]=L[n]||[]).push(f);return Promise.resolve({remove(){}});},start:async()=>{load();},isLoaded:async()=>({loaded}),
+    privacyOptions:async()=>({required:false}),showPrivacyOptions:async()=>{},
+    showInterstitial:()=>{if(!loaded)return Promise.resolve({shown:false});loaded=false;return new Promise(res=>{
+      const d=document.createElement('div');d.id='testAd';d.style.cssText='position:fixed;inset:0;z-index:99;background:#1e2340;color:#fff;display:grid;place-items:center;text-align:center;font:800 22px/1.4 sans-serif';
+      let t=3;const draw=()=>{d.innerHTML='TEST AD<br><small style="font-size:14px;font-weight:500">ad '+(ADS.shown+1)+' · after drive '+ADS.n+' · closes in '+t+' s<br>(?adtest: no real ads in the browser)</small>';};draw();document.body.appendChild(d);
+      const iv=setInterval(()=>{t--;draw();if(t<=0){clearInterval(iv);d.remove();res({shown:true});load();}},1000);});}};
+}
+function masPlugin(){const C=window.Capacitor;if(!C||!C.isNativePlatform||!C.isNativePlatform())return adTestPlugin();
   return (C.Plugins&&C.Plugins.Yodo1Mas)||(C.registerPlugin?C.registerPlugin('Yodo1Mas'):null);}
 // start-up inside the app: MAS shows its privacy window the first time, then loads the first ad (and the next one after each ad)
 async function adsInit(){
   const P=masPlugin();if(!P)return;
-  const key=window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='ios'?YODO1_APP_KEY_IOS:YODO1_APP_KEY_ANDROID;
-  if(!key){ADS.log.push('no app key');return;}
+  const key=window.Capacitor&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='ios'?YODO1_APP_KEY_IOS:YODO1_APP_KEY_ANDROID;
+  if(!key){ADS.log.push('no app key');ADS.st='no app key';adDiag();return;}
   try{
-    P.addListener('interstitialLoaded',()=>{ADS.ready=true;if(ADS.wait)ADS.wait();});
-    P.addListener('interstitialFailedToLoad',()=>{ADS.ready=false;});
+    P.addListener('interstitialLoaded',()=>{ADS.ready=true;ADS.loads++;adDiag();if(ADS.wait)ADS.wait();});
+    P.addListener('interstitialFailedToLoad',e=>{ADS.ready=false;ADS.fails++;ADS.err='load failed: '+((e&&e.error)||'?');adDiag();});
+    P.addListener('interstitialFailedToShow',e=>{ADS.err='show failed: '+((e&&e.error)||'?');adDiag();});
+    ADS.st='starting';ADS.P=P;adDiag();
     await P.start({appKey:key});
-    ADS.P=P;ADS.on=true;
+    ADS.on=true;ADS.st='started';adDiag();
     const st=await P.isLoaded().catch(()=>null);if(st&&st.loaded)ADS.ready=true;
     adPrivacyButton();
-  }catch(e){console.warn('ads',e);ADS.log.push('start failed');}
+  }catch(e){console.warn('ads',e);ADS.log.push('start failed');ADS.st='failed';ADS.err=String((e&&e.message)||e);adDiag();}
 }
+// TESTING ONLY (inside the app): Options shows how the ads are doing, and can play one straight away
+function adDiag(){
+  const d=$('adDiag');if(!d)return;const P=masPlugin();d.hidden=!P;if(!P)return;
+  $('adDiagTxt').textContent='Ads: MAS '+ADS.st+' · '+(ADS.ready?'an ad is ready':'no ad loaded yet')+' · loaded '+ADS.loads+', failed '+ADS.fails+
+    ' · drive '+ADS.n+' (an ad after every '+AD_EVERY+')'+(ADS.err?' · last problem: '+ADS.err:'')+(ADS.log.length?' · '+ADS.log.slice(-3).join(', '):'');
+}
+$('adTestBtn').onclick=()=>{
+  if(!ADS.P||!ADS.on){adDiag();return;}
+  ADS.P.showInterstitial({placement:AD_PLACEMENT}).then(r=>{ADS.log.push('test:'+(r&&r.shown?'viewed':'not ready'));if(r&&r.shown)ADS.shown++;adDiag();}).catch(e=>{ADS.err='show failed: '+((e&&e.message)||e);adDiag();});
+};
 // Options → "Ad privacy choices": only for players who need it (EU/UK, Google's consent form)
 function adPrivacyButton(){
   const b=$('adPrivBtn');if(!ADS.P||!b)return;
   ADS.P.privacyOptions().then(r=>{b.hidden=!(r&&r.required);b.onclick=()=>{ADS.P.showPrivacyOptions().catch(()=>{});};}).catch(()=>{});
 }
-// a race was finished: count it, and every AD_EVERY-th one earns an ad at the next break
+// a drive is over (finished, restarted, quit, retired or left; any mode, Time attack too): count it once,
+// and every AD_EVERY-th one earns an ad at the next break
 function adRaceDone(){
+  if(ADS.counted)return;ADS.counted=true;
   ADS.n++;try{localStorage.setItem('phd-adn',String(ADS.n));}catch(e){}
   if(ADS.n%AD_EVERY===0&&ADS.on)ADS.pend=true;
 }
+// leaving a race before the finish still counts as a drive, once the car has been driving for a few seconds
+function adDriveEnd(){if(!ADS.counted&&(state==='race'||state==='countdown')&&raceT>3)adRaceDone();}
 // play the waiting ad (if any), then carry on. `then` always runs exactly once, ad or no ad.
 function adShow(name,then){
   if(ADS.busy)return;   // (a second tap while the ad is coming)
@@ -5003,8 +5038,10 @@ function defaultServer(){
   try{const s=localStorage.getItem('phd-server');
     if(s&&/\/\/pebble-hill-derby-server\.onrender\.com/.test(s)){localStorage.removeItem('phd-server');}   // old Oregon server: moved to the EU one
     else if(s)return s;}catch(e){}
-  // opened from a local test server (your PC / LAN)? use that one, otherwise the public server
-  if(/^https?:$/.test(location.protocol)&&/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname))return (location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws';
+  // opened from a local test server (your PC / LAN)? use that one, otherwise the public server.
+  // (Inside the app the page also says "localhost", but that's the phone itself: always the public server there.)
+  const inApp=!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform());
+  if(!inApp&&/^https?:$/.test(location.protocol)&&/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname))return (location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws';
   return DEFAULT_SERVER;
 }
 const wake=url=>{try{fetch(url.replace(/^ws/,'http').replace(/\/ws$/,'/health'),{mode:'no-cors',cache:'no-store'}).catch(()=>{});}catch(e){}};
@@ -5872,7 +5909,7 @@ function netDropRace(msg){
 function netRace(m){
   NET.outMsg=null;NET.botHost=m.botHost!=null?m.botHost:null;NET.raceMode=m.mode==='survival'?'survival':'normal';NET.results=null;NET.vote=null;NET.voted=null;NET.myVote=null;NET.inRace=false;NET.online=true;NET.you=m.you;resultsShown=false;NET.adCounted=false;
   $('results').hidden=true;$('pause').hidden=true;
-  for(const k of MENUS)$(k).hidden=true;$('menubg').hidden=true;$('wallet').hidden=true;walletClose();walletLine(null);WAL.net=null;
+  for(const k of MENUS)$(k).hidden=true;$('menubg').hidden=true;$('wallet').hidden=true;walletClose();walletLine(null);WAL.net=null;ADS.counted=false;
   initAudio();
   ensureTrack(m.track,()=>{
     setupOnlineCars(m.roster);
