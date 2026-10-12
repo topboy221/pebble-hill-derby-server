@@ -1,0 +1,26 @@
+// Yodo1 MAS for Soapcube Racing: an Android library that Capacitor adds to the app automatically (npx cap sync)
+buildscript {
+    repositories { google(); mavenCentral() }
+    dependencies { classpath 'com.android.tools.build:gradle:8.13.0' }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    namespace "world.soapcuberacing.yodo1mas"
+    compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36
+    defaultConfig {
+        minSdkVersion 24                                   // MAS needs Android 7.0 or newer
+        targetSdkVersion project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+}
+
+dependencies {
+    implementation project(':capacitor-android')
+    implementation 'com.yodo1.mas:full:4.18.1'                          // the MAS SDK (AppLovin + Google AdMob + the other networks)
+    implementation 'com.google.android.ump:user-messaging-platform:3.1.0' // Google's consent form, for "Ad privacy choices"
+}

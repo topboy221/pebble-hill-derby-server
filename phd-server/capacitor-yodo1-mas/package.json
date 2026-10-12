@@ -1,0 +1,16 @@
+{
+  "name": "capacitor-yodo1-mas",
+  "version": "1.0.0",
+  "description": "Yodo1 MAS interstitial ads for Soapcube Racing (Capacitor plugin, Android + iOS)",
+  "license": "UNLICENSED",
+  "private": true,
+  "author": "Soapcube Racing",
+  "files": ["android/src/main/", "android/build.gradle", "ios/Plugin/", "CapacitorYodo1Mas.podspec"],
+  "capacitor": {
+    "ios": { "src": "ios" },
+    "android": { "src": "android" }
+  },
+  "peerDependencies": {
+    "@capacitor/core": ">=6.0.0"
+  }
+}
