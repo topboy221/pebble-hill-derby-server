@@ -149,7 +149,8 @@ public class Yodo1MasPlugin extends Plugin {
         @Override
         public void onInterstitialAdFailedToLoad(Yodo1MasInterstitialAd ad, @NonNull Yodo1MasError error) {
             Log.w(TAG, "load failed: " + error);
-            notifyListeners("interstitialFailedToLoad", new JSObject());
+            JSObject e = new JSObject(); e.put("error", String.valueOf(error));
+            notifyListeners("interstitialFailedToLoad", e);
             // try again after a pause that doubles each time (10 s, 20 s, 40 s ... up to about 10 minutes), as MAS recommends
             long delay = 10_000L * (1L << Math.min(retries, 6));
             retries++;
@@ -162,6 +163,8 @@ public class Yodo1MasPlugin extends Plugin {
         @Override
         public void onInterstitialAdFailedToOpen(Yodo1MasInterstitialAd ad, @NonNull Yodo1MasError error) {
             Log.w(TAG, "show failed: " + error);
+            JSObject e = new JSObject(); e.put("error", String.valueOf(error));
+            notifyListeners("interstitialFailedToShow", e);
             finishShow(false);
             loadNext();
         }
