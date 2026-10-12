@@ -7,6 +7,9 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Proxy;
+
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -53,22 +56,35 @@ public class Yodo1MasPlugin extends Plugin {
             Yodo1MasAdBuildConfig config = new Yodo1MasAdBuildConfig.Builder().enableUserPrivacyDialog(true).build();
             Yodo1Mas.getInstance().setAdBuildConfig(config);
             Yodo1MasInterstitialAd.getInstance().setAdListener(listener);
-            Yodo1Mas.getInstance().initMas(activity, key, new Yodo1Mas.InitListener() {
-                @Override
-                public void onMasInitSuccessful() {
-                    started = true; starting = false;
-                    call.resolve();
-                    load();
-                }
-
-                @Override
-                public void onMasInitFailed(@NonNull Yodo1MasError error) {
-                    starting = false;
-                    Log.w(TAG, "init failed: " + error);
-                    call.reject("MAS init failed: " + error);
-                }
-            });
+            Yodo1Mas.getInstance().initMas(activity, key, initListener(call));
         });
+    }
+
+    // MAS's start-up callbacks. Different MAS versions call onMasInitSuccessful() or onMasInitSuccessful(configuration),
+    // so the listener answers to both names (whatever their parameters) and resolves the call once.
+    private Yodo1Mas.InitListener initListener(final PluginCall call) {
+        final boolean[] done = { false };
+        InvocationHandler h = (proxy, method, args) -> {
+            switch (method.getName()) {
+                case "onMasInitSuccessful":
+                    if (!done[0]) { done[0] = true; started = true; starting = false; call.resolve(); loadNext(); }
+                    return null;
+                case "onMasInitFailed":
+                    if (!done[0]) {
+                        done[0] = true; starting = false;
+                        Object error = args != null && args.length > 0 ? args[0] : null;
+                        Log.w(TAG, "init failed: " + error);
+                        call.reject("MAS init failed: " + error);
+                    }
+                    return null;
+                case "hashCode": return System.identityHashCode(proxy);
+                case "equals": return args != null && proxy == args[0];
+                case "toString": return "Yodo1MasPlugin.InitListener";
+                default: return null;
+            }
+        };
+        return (Yodo1Mas.InitListener) Proxy.newProxyInstance(Yodo1Mas.InitListener.class.getClassLoader(),
+                new Class<?>[] { Yodo1Mas.InitListener.class }, h);
     }
 
     @PluginMethod
@@ -107,7 +123,7 @@ public class Yodo1MasPlugin extends Plugin {
     }
 
     // ---- loading, and the ad's events
-    private void load() {
+    private void loadNext() {   // (not "load": Capacitor's Plugin already has a load())
         main.post(() -> Yodo1MasInterstitialAd.getInstance().loadAd(getActivity()));
     }
 
@@ -147,13 +163,13 @@ public class Yodo1MasPlugin extends Plugin {
         public void onInterstitialAdFailedToOpen(Yodo1MasInterstitialAd ad, @NonNull Yodo1MasError error) {
             Log.w(TAG, "show failed: " + error);
             finishShow(false);
-            load();
+            loadNext();
         }
 
         @Override
         public void onInterstitialAdClosed(Yodo1MasInterstitialAd ad) {
             finishShow(true);
-            load();   // get the next one ready
+            loadNext();   // get the next one ready
         }
     };
 }
