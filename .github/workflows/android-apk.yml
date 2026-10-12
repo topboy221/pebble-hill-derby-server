@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - '**/public/pebble-hill-derby.html'
+      - '**/pebble-hill-derby.html'
       - '**/app/**'
       - '**/capacitor-yodo1-mas/**'
       - '.github/workflows/**'
@@ -43,9 +43,17 @@ jobs:
         working-directory: ${{ env.ROOT }}/app
         run: npm install --no-audit --no-fund
 
+      # the game file: phd-server/public/pebble-hill-derby.html, or wherever it is in the repository
       - name: Put the game into the app
         working-directory: ${{ env.ROOT }}/app
-        run: npm run sync
+        run: |
+          GAME=""
+          for f in ../public/pebble-hill-derby.html ../public/index.html; do [ -f "$f" ] && { GAME="$f"; break; }; done
+          if [ -z "$GAME" ]; then GAME=$(cd "$GITHUB_WORKSPACE" && find . -name 'pebble-hill-derby.html' -not -path '*/node_modules/*' -not -path '*/app/*' | head -n 1); [ -n "$GAME" ] && GAME="$GITHUB_WORKSPACE/$GAME"; fi
+          if [ -z "$GAME" ]; then echo "::error::Can't find pebble-hill-derby.html anywhere in the repository."; exit 1; fi
+          echo "Game file: $GAME ($(wc -c < "$GAME") bytes)"
+          mkdir -p www && cp "$GAME" www/index.html
+          npx cap sync android
 
       - name: Build the APK
         working-directory: ${{ env.ROOT }}/app/android
