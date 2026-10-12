@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Soapcube Racing</string>
+    <string name="title_activity_main">Soapcube Racing</string>
+    <string name="package_name">world.soapcuberacing.app</string>
+    <string name="custom_url_scheme">world.soapcuberacing.app</string>
+</resources>

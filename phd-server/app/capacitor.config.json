@@ -1,0 +1,8 @@
+{
+  "appId": "world.soapcuberacing.app",
+  "appName": "Soapcube Racing",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#8ec2e6"
+  }
+}
