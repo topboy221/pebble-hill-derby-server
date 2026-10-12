@@ -529,7 +529,7 @@ const server = http.createServer((req, res) => {
     return;
   }
   if (url === '/hooks/revenuecat') return revenuecatHook(req, res);
-  // plain pages next to the game: the privacy policy (needed by AdMob and the app stores) and AdMob's app-ads.txt
+  // plain pages next to the game: the privacy policy (needed by the ad network and the app stores) and the ads' app-ads.txt
   const PAGES = { '/privacy': ['privacy.html', 'text/html; charset=utf-8'], '/privacy.html': ['privacy.html', 'text/html; charset=utf-8'], '/app-ads.txt': ['app-ads.txt', 'text/plain; charset=utf-8'] };
   if (PAGES[url]) {
     return fs.readFile(path.join(__dirname, 'public', PAGES[url][0]), (err, buf) => {
