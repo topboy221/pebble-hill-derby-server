@@ -23,10 +23,11 @@ const TIMES = {                                   // seconds
   countdown: 3.6,        // matches the in-game 3-2-1
   afterFirst: 60,        // others get this long after the winner crosses the line
   maxRace: 8 * 60,
-  vote: 15,
+  vote: 20,              // the next-track vote closes 20 s after the first vote (or as soon as everyone has voted)
+  voteIdle: 60,          // nobody votes at all: a random one of the three after this long
   afterVote: 3,
 };
-if (process.env.PHD_FAST) Object.assign(TIMES, { readyWait: 3, vote: 30, afterVote: 2, afterFirst: 15 });   // for automated tests
+if (process.env.PHD_FAST) Object.assign(TIMES, { readyWait: 3, vote: 20, voteIdle: 30, afterVote: 2, afterFirst: 15 });   // for automated tests
 const SNAP_MS = 50;                               // 20 position updates a second
 const RACE_IDLE_MS = 10000;                       // a racer whose car hasn't reported in this long (app switched away, phone locked, gone) is taken out of the race
 
@@ -156,7 +157,7 @@ function leaveLobby(c) {
     if (L.race.botHost === c.id) dropBots(L, true);                    // their game was driving the AI cars
     if (L.state === 'loading') maybeGo(L); else if (L.state === 'race') maybeEnd(L);
   }
-  if (L.vote) { L.vote.ballots.delete(c.id); }
+  if (L.vote) { L.vote.ballots.delete(c.id); voteDone(L); if (L.vote) broadcast(L, { t: 'votes', vote: voteInfo(L) }); }
   if (!L.players.length) { clearTimer(L); clearInterval(L.race && L.race.snapTimer); clearInterval(L.race && L.race.idleTimer); lobbies.delete(L.id); return; }
   if (L.host === c.id) L.host = L.players[0].id;
   if (L.state === 'lobby') checkAutoStart(L);
@@ -303,10 +304,10 @@ function endRace(L) {
   L.lastRows = rows;
   L.state = 'results';
   const opts = TRACK_IDS.slice().sort(() => Math.random() - 0.5).slice(0, Math.min(3, TRACK_IDS.length));   // three tracks to vote on
-  L.vote = { options: opts, ballots: new Map(), ends: Date.now() + TIMES.vote * 1000 };
+  L.vote = { options: opts, ballots: new Map(), ends: 0 };          // the 20 s clock starts with the first vote
+  setTimer(L, TIMES.voteIdle, () => closeVote(L));
   broadcast(L, { t: 'results', rows, vote: voteInfo(L) });
   payPrizes(L, rows);
-  setTimer(L, TIMES.vote, () => closeVote(L));
   pushLobby(L);
 }
 // cash prizes: every signed-in racer who took part (not guests, AI, or anyone taken out for going silent) gets paid by the
@@ -332,13 +333,21 @@ function payPrizes(L, rows) {
 function voteInfo(L) {
   const V = L.vote; if (!V) return null;
   const counts = V.options.map(o => [...V.ballots.values()].filter(b => b === o).length);
-  return { options: V.options, counts, secs: Math.max(0, Math.ceil((V.ends - Date.now()) / 1000)) };
+  return { options: V.options, counts, started: !!V.ends, secs: V.ends ? Math.max(0, Math.ceil((V.ends - Date.now()) / 1000)) : null };
 }
+// a vote for one of the three tracks, or track null to take your vote back
 function onVote(c, track) {
-  const L = c.lobby; if (!L || L.state !== 'results' || !L.vote || !L.vote.options.includes(track)) return;
-  L.vote.ballots.set(c.id, track);
+  const L = c.lobby; if (!L || L.state !== 'results' || !L.vote) return;
+  const V = L.vote;
+  if (track == null) V.ballots.delete(c.id);
+  else if (V.options.includes(track)) V.ballots.set(c.id, track);
+  else return;
+  if (!V.ends && V.ballots.size) { V.ends = Date.now() + TIMES.vote * 1000; setTimer(L, TIMES.vote, () => closeVote(L)); }
   broadcast(L, { t: 'votes', vote: voteInfo(L) });
-  if (L.vote.ballots.size >= L.players.length) closeVote(L);
+  voteDone(L);
+}
+function voteDone(L) {   // everyone in the lobby has voted: no need to wait
+  if (L.state === 'results' && L.vote && L.vote.ballots.size && L.players.every(p => L.vote.ballots.has(p.id))) closeVote(L);
 }
 function closeVote(L) {
   if (L.state !== 'results' || !L.vote) return;
