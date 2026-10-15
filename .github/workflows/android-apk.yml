@@ -53,6 +53,8 @@ jobs:
             const fs=require("fs");let h=fs.readFileSync(process.argv[1],"utf8");
             if(!/^\s*<!doctype/i.test(h))h="<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover\"><meta name=\"theme-color\" content=\"#8ec2e6\"></head><body>"+h+"</body></html>";
             fs.writeFileSync("www/index.html",h);' "$GAME"
+          # the How to play clips sit next to the game (public/howto)
+          rm -rf www/howto; if [ -d "$(dirname "$GAME")/howto" ]; then cp -r "$(dirname "$GAME")/howto" www/howto; echo "How to play clips: $(ls www/howto | tr '\n' ' ')"; else echo "::warning::No howto folder next to the game: How to play will have no clips."; fi
           head -c 200 www/index.html; echo
           npx cap sync android
 
