@@ -546,6 +546,14 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': PAGES[url][1], 'Cache-Control': 'public, max-age=300' }); res.end(buf);
     });
   }
+  // the How to play clips
+  const clip = /^\/howto\/([a-z]{3,12})\.webp$/.exec(url);
+  if (clip) {
+    return fs.readFile(path.join(__dirname, 'public', 'howto', clip[1] + '.webp'), (err, buf) => {
+      if (err) { res.writeHead(404); return res.end('Not found'); }
+      res.writeHead(200, { 'Content-Type': 'image/webp', 'Cache-Control': 'public, max-age=86400' }); res.end(buf);
+    });
+  }
   if (url === '/health') { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); return res.end(JSON.stringify({ ok: true, online: online.size, lobbies: lobbies.size, accounts: !!(SB_URL && SB_KEY), purchases: !!(RC_AUTH && SB_URL && SB_SECRET) })); }
   res.writeHead(404); res.end('Not found');
 });
