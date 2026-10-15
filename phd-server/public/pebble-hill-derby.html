@@ -5941,7 +5941,7 @@ async function acctDelete(){
    Works when the game runs inside the native app with the RevenueCat Capacitor plugin (@revenuecat/purchases-capacitor);
    on the web it stays switched off. Purchases are tied to the signed-in account (RevenueCat app user id = Supabase user id):
    RevenueCat tells the game server, the server records them in the account (owned_products / entitlements). */
-const REVENUECAT_IOS_KEY=window.PHD_TEST_RC_KEY||'', REVENUECAT_ANDROID_KEY=window.PHD_TEST_RC_KEY||'';   // public SDK keys from RevenueCat → Project → API keys (Android: goog_…, iOS: appl_…)
+const REVENUECAT_IOS_KEY=window.PHD_TEST_RC_KEY||'', REVENUECAT_ANDROID_KEY=window.PHD_TEST_RC_KEY||'goog_fjRMwblDLGGqKMHjYtLdnaRdtUD';   // public SDK keys from RevenueCat → Project → API keys (Android: goog_…, iOS: appl_…)
 const IAP={ok:false,P:null};
 function iapPlugin(){const C=window.Capacitor;if(!C||!C.isNativePlatform||!C.isNativePlatform())return null;return (C.Plugins&&C.Plugins.Purchases)||(C.registerPlugin?C.registerPlugin('Purchases'):null);}
 async function iapInit(){
