@@ -2,7 +2,7 @@
   "name": "soapcube-racing-app",
   "version": "1.0.0",
   "private": true,
-  "description": "Soapcube Racing: the Android app (Capacitor) around public/pebble-hill-derby.html",
+  "description": "Soapcube Racing: the Android app (Capacitor) around public/pebble-hill-derby.html, with Yodo1 MAS ads and RevenueCat purchases",
   "scripts": {
     "copy-game": "node -e \"require('fs').copyFileSync('../public/pebble-hill-derby.html','www/index.html')\"",
     "sync": "npm run copy-game && npx cap sync android"
@@ -10,7 +10,8 @@
   "dependencies": {
     "@capacitor/android": "8.5.3",
     "@capacitor/core": "8.5.3",
-    "capacitor-yodo1-mas": "file:../capacitor-yodo1-mas"
+    "capacitor-yodo1-mas": "file:../capacitor-yodo1-mas",
+    "@revenuecat/purchases-capacitor": "13.6.1"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.3"

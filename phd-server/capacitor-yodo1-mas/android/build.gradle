@@ -1,7 +1,7 @@
 // Yodo1 MAS for Soapcube Racing: an Android library that Capacitor adds to the app automatically (npx cap sync)
 buildscript {
     repositories { google(); mavenCentral() }
-    dependencies { classpath 'com.android.tools.build:gradle:8.13.0' }
+    dependencies { classpath 'com.android.tools.build:gradle:8.13.2' }
 }
 
 apply plugin: 'com.android.library'

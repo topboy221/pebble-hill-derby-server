@@ -7,8 +7,9 @@ android {
         applicationId "world.soapcuberacing.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // every build GitHub makes gets a higher number (Google Play needs that for each upload)
+        versionCode Integer.parseInt(System.getenv('APP_BUILD') ?: '1')
+        versionName "1.0." + (System.getenv('APP_BUILD') ?: '1')
         multiDexEnabled true
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -25,12 +26,23 @@ android {
             keyAlias 'soapcube'
             keyPassword 'soapcube'
         }
+        // Google Play builds: signed with your upload key (kept in GitHub's secrets, never in the repository)
+        release {
+            def ks = System.getenv('UPLOAD_KEYSTORE_FILE')
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv('UPLOAD_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('UPLOAD_KEY_ALIAS') ?: 'upload'
+                keyPassword System.getenv('UPLOAD_KEYSTORE_PASSWORD')
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
+            if (System.getenv('UPLOAD_KEYSTORE_FILE')) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
