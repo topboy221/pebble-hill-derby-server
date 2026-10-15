@@ -1,11 +1,25 @@
-# Builds the Soapcube Racing Android test app (an APK you install on your phone).
+# Builds the Soapcube Racing Android app. Two kinds of build (you pick when you start it):
+#  - "Test APK": an APK to install straight on your phone (artifact soapcube-racing-apk, with app-debug.apk inside).
+#  - "Google Play": an AAB to upload to Play Console (artifact soapcube-racing-play, with app-release.aab inside),
+#    signed with your upload key from the repository's secrets UPLOAD_KEYSTORE_B64 and UPLOAD_KEYSTORE_PASSWORD (README step 10).
 # This file must be in the repository's top folder, at .github/workflows/ (GitHub ignores it anywhere else).
 # Runs only when you start it: Actions → "Android test app" → Run workflow.
-# The APK is under the finished run → Artifacts → soapcube-racing-apk (a zip with app-debug.apk inside).
 name: Android test app
 
 on:
   workflow_dispatch:   # only when you start it: Actions → Android test app → Run workflow
+    inputs:
+      build:
+        description: 'What to build'
+        type: choice
+        default: 'Test APK (install on your phone)'
+        options:
+          - 'Test APK (install on your phone)'
+          - 'Google Play (AAB to upload)'
+
+env:
+  APP_BUILD: ${{ github.run_number }}   # the app's build number: goes up by one every run
+  PLAY: ${{ startsWith(github.event.inputs.build, 'Google Play') }}
 
 jobs:
   apk:
@@ -33,7 +47,7 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install Capacitor and the ads plugin
+      - name: Install Capacitor, the ads plugin and RevenueCat
         working-directory: ${{ env.ROOT }}/app
         run: npm install --no-audit --no-fund
 
@@ -58,14 +72,39 @@ jobs:
           head -c 200 www/index.html; echo
           npx cap sync android
 
-      - name: Build the APK
+      - name: Build the test APK
+        if: env.PLAY != 'true'
         working-directory: ${{ env.ROOT }}/app/android
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
 
       - uses: actions/upload-artifact@v5
+        if: env.PLAY != 'true'
         with:
           name: soapcube-racing-apk
           path: ${{ env.ROOT }}/app/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: Build for Google Play (signed with your upload key)
+        if: env.PLAY == 'true'
+        working-directory: ${{ env.ROOT }}/app/android
+        env:
+          UPLOAD_KEYSTORE_B64: ${{ secrets.UPLOAD_KEYSTORE_B64 }}
+          UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$UPLOAD_KEYSTORE_B64" ] || [ -z "$UPLOAD_KEYSTORE_PASSWORD" ]; then
+            echo "::error::The upload key isn't set up: add the secrets UPLOAD_KEYSTORE_B64 and UPLOAD_KEYSTORE_PASSWORD (README step 10)."; exit 1; fi
+          echo "$UPLOAD_KEYSTORE_B64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/upload.jks"
+          export UPLOAD_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks"
+          chmod +x gradlew
+          ./gradlew bundleRelease --no-daemon --stacktrace
+          rm -f "$RUNNER_TEMP/upload.jks"
+          echo "Build number (versionCode): $APP_BUILD"
+
+      - uses: actions/upload-artifact@v5
+        if: env.PLAY == 'true'
+        with:
+          name: soapcube-racing-play
+          path: ${{ env.ROOT }}/app/android/app/build/outputs/bundle/release/app-release.aab
           retention-days: 30
