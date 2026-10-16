@@ -528,15 +528,30 @@ function nameBad(n){
    The ad networks read https://<developer website>/app-ads.txt. Yodo1 MAS publishes the list of its ad sellers and
    changes it from time to time, so the server fetches it (APP_ADS_URL, default yodo1.com) and refreshes it every 6 hours.
    A file at public/app-ads.txt, if you add one, takes priority. */
-const APP_ADS_URL = process.env.APP_ADS_URL || 'https://yodo1.com/app-ads.txt';
-const appAds = { text: '', at: 0, busy: null };
-function appAdsFetch() {
+const APP_ADS_DEFAULT = 'https://yodo1.com/app-ads.txt';
+function appAdsUrl(s) {   // accepts "2v37.ads-txt.site", "https://2v37.ads-txt.site" or the full …/app-ads.txt address
+  s = String(s || '').trim();
+  if (!s) return '';
+  if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+  try { const u = new URL(s); if (u.pathname === '/' || u.pathname === '') u.pathname = '/app-ads.txt'; return u.href; } catch (e) { return ''; }
+}
+const APP_ADS_URLS = [appAdsUrl(process.env.APP_ADS_URL), APP_ADS_DEFAULT].filter((u, i, a) => u && a.indexOf(u) === i);
+const appAds = { text: '', at: 0, busy: null, from: '' };
+async function appAdsGet(url) {
+  const r = await fetch(url, { signal: AbortSignal.timeout(10000), headers: { 'User-Agent': 'soapcube-racing-server' } });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const t = await r.text();
+  if (!/,\s*(DIRECT|RESELLER)/i.test(t)) throw new Error('not an app-ads.txt');
+  return t;
+}
+function appAdsFetch() {   // your game's own MAS link first (APP_ADS_URL), then the general MAS list
   if (appAds.busy) return appAds.busy;
-  appAds.busy = fetch(APP_ADS_URL, { signal: AbortSignal.timeout(10000), headers: { 'User-Agent': 'soapcube-racing-server' } })
-    .then(r => r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status)))
-    .then(t => { if (/,\s*(DIRECT|RESELLER)/i.test(t)) { appAds.text = t; appAds.at = Date.now(); } else throw new Error('not an app-ads.txt'); })
-    .catch(e => console.log('app-ads.txt fetch failed:', e.message))
-    .finally(() => { appAds.busy = null; });
+  appAds.busy = (async () => {
+    for (const url of APP_ADS_URLS) {
+      try { appAds.text = await appAdsGet(url); appAds.at = Date.now(); appAds.from = url; return; }
+      catch (e) { console.log('app-ads.txt fetch failed (' + url + '):', e.message); }
+    }
+  })().finally(() => { appAds.busy = null; });
   return appAds.busy;
 }
 async function appAdsTxt(res) {
@@ -576,7 +591,7 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'image/webp', 'Cache-Control': 'public, max-age=86400' }); res.end(buf);
     });
   }
-  if (url === '/health') { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); return res.end(JSON.stringify({ ok: true, online: online.size, lobbies: lobbies.size, accounts: !!(SB_URL && SB_KEY), purchases: !!(RC_AUTH && SB_URL && SB_SECRET) })); }
+  if (url === '/health') { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); return res.end(JSON.stringify({ ok: true, online: online.size, lobbies: lobbies.size, accounts: !!(SB_URL && SB_KEY), purchases: !!(RC_AUTH && SB_URL && SB_SECRET), appAds: appAds.from || null })); }
   res.writeHead(404); res.end('Not found');
 });
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
