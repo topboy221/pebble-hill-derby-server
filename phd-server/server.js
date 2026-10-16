@@ -524,6 +524,27 @@ function nameBad(n){
   return (String(n||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').match(/[A-Z]?[a-z0-9]+|[A-Z0-9]+(?![a-z])/g)||[]).some(w=>{const x=leet(w.toLowerCase());return BAD_EXACT.has(x)||BAD_EXACT.has(sq(x));});
 }
 
+/* ---------------- app-ads.txt ----------------
+   The ad networks read https://<developer website>/app-ads.txt. Yodo1 MAS publishes the list of its ad sellers and
+   changes it from time to time, so the server fetches it (APP_ADS_URL, default yodo1.com) and refreshes it every 6 hours.
+   A file at public/app-ads.txt, if you add one, takes priority. */
+const APP_ADS_URL = process.env.APP_ADS_URL || 'https://yodo1.com/app-ads.txt';
+const appAds = { text: '', at: 0, busy: null };
+function appAdsFetch() {
+  if (appAds.busy) return appAds.busy;
+  appAds.busy = fetch(APP_ADS_URL, { signal: AbortSignal.timeout(10000), headers: { 'User-Agent': 'soapcube-racing-server' } })
+    .then(r => r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status)))
+    .then(t => { if (/,\s*(DIRECT|RESELLER)/i.test(t)) { appAds.text = t; appAds.at = Date.now(); } else throw new Error('not an app-ads.txt'); })
+    .catch(e => console.log('app-ads.txt fetch failed:', e.message))
+    .finally(() => { appAds.busy = null; });
+  return appAds.busy;
+}
+async function appAdsTxt(res) {
+  if (!appAds.text || Date.now() - appAds.at > 6 * 3600e3) await appAdsFetch();
+  if (!appAds.text) { res.writeHead(503, { 'Content-Type': 'text/plain' }); return res.end('app-ads.txt is not available right now'); }
+  res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' }); res.end(appAds.text);
+}
+
 /* ---------------- http + websocket ---------------- */
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
@@ -542,6 +563,7 @@ const server = http.createServer((req, res) => {
   const PAGES = { '/privacy': ['privacy.html', 'text/html; charset=utf-8'], '/privacy.html': ['privacy.html', 'text/html; charset=utf-8'], '/app-ads.txt': ['app-ads.txt', 'text/plain; charset=utf-8'] };
   if (PAGES[url]) {
     return fs.readFile(path.join(__dirname, 'public', PAGES[url][0]), (err, buf) => {
+      if (err && url === '/app-ads.txt') return appAdsTxt(res);   // no own copy: serve MAS's list, kept up to date automatically
       if (err) { res.writeHead(404); return res.end('Not found'); }
       res.writeHead(200, { 'Content-Type': PAGES[url][1], 'Cache-Control': 'public, max-age=300' }); res.end(buf);
     });
