@@ -79,7 +79,7 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         if: env.PLAY != 'true'
         with:
           name: soapcube-racing-apk
@@ -93,22 +93,29 @@ jobs:
           UPLOAD_KEYSTORE_B64: ${{ secrets.UPLOAD_KEYSTORE_B64 }}
           UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
         run: |
-          # which secret is missing (only whether it's there and how long it is: never its value)
-          echo "UPLOAD_KEYSTORE_B64: ${#UPLOAD_KEYSTORE_B64} characters (should be about 2884)"
+          # the upload key: from the secret UPLOAD_KEYSTORE_B64, or else from the locked copy in the repository
+          # (app/android/upload-key.jks.enc, encrypted with the password: useless without the UPLOAD_KEYSTORE_PASSWORD secret)
+          export UPLOAD_KEYSTORE_PASSWORD="$(printf '%s' "$UPLOAD_KEYSTORE_PASSWORD" | tr -d ' \r\n')"   # (a stray space or line break from pasting doesn't count)
           echo "UPLOAD_KEYSTORE_PASSWORD: ${#UPLOAD_KEYSTORE_PASSWORD} characters (should be 24)"
-          miss=""
-          [ -z "$UPLOAD_KEYSTORE_B64" ] && miss="$miss UPLOAD_KEYSTORE_B64"
-          [ -z "$UPLOAD_KEYSTORE_PASSWORD" ] && miss="$miss UPLOAD_KEYSTORE_PASSWORD"
-          if [ -n "$miss" ]; then
-            echo "::error::GitHub doesn't pass these secrets to the build:$miss. They must be REPOSITORY secrets: Settings → Secrets and variables → Actions → 'Repository secrets' (not Environments, Codespaces or Dependabot), with exactly these names."; exit 1; fi
-          echo "$UPLOAD_KEYSTORE_B64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/upload.jks"
+          if [ -z "$UPLOAD_KEYSTORE_PASSWORD" ]; then
+            echo "::error::GitHub doesn't pass the secret UPLOAD_KEYSTORE_PASSWORD to the build. Add it under Settings → Secrets and variables → Actions → Repository secrets, with exactly that name."; exit 1; fi
+          if [ -n "$UPLOAD_KEYSTORE_B64" ]; then
+            echo "Upload key: from the secret UPLOAD_KEYSTORE_B64 (${#UPLOAD_KEYSTORE_B64} characters)"
+            echo "$UPLOAD_KEYSTORE_B64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/upload.jks"
+          elif [ -f upload-key.jks.enc ]; then
+            echo "Upload key: from upload-key.jks.enc in the repository"
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in upload-key.jks.enc -out "$RUNNER_TEMP/upload.jks" -pass env:UPLOAD_KEYSTORE_PASSWORD \
+              || { echo "::error::Couldn't unlock upload-key.jks.enc: the UPLOAD_KEYSTORE_PASSWORD secret doesn't match it."; exit 1; }
+          else
+            echo "::error::No upload key: put upload-key.jks.enc in phd-server/app/android/ (README step 10)."; exit 1
+          fi
           export UPLOAD_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks"
           chmod +x gradlew
           ./gradlew bundleRelease --no-daemon --stacktrace
           rm -f "$RUNNER_TEMP/upload.jks"
           echo "Build number (versionCode): $APP_BUILD"
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         if: env.PLAY == 'true'
         with:
           name: soapcube-racing-play
