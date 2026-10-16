@@ -93,8 +93,14 @@ jobs:
           UPLOAD_KEYSTORE_B64: ${{ secrets.UPLOAD_KEYSTORE_B64 }}
           UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
         run: |
-          if [ -z "$UPLOAD_KEYSTORE_B64" ] || [ -z "$UPLOAD_KEYSTORE_PASSWORD" ]; then
-            echo "::error::The upload key isn't set up: add the secrets UPLOAD_KEYSTORE_B64 and UPLOAD_KEYSTORE_PASSWORD (README step 10)."; exit 1; fi
+          # which secret is missing (only whether it's there and how long it is: never its value)
+          echo "UPLOAD_KEYSTORE_B64: ${#UPLOAD_KEYSTORE_B64} characters (should be about 2884)"
+          echo "UPLOAD_KEYSTORE_PASSWORD: ${#UPLOAD_KEYSTORE_PASSWORD} characters (should be 24)"
+          miss=""
+          [ -z "$UPLOAD_KEYSTORE_B64" ] && miss="$miss UPLOAD_KEYSTORE_B64"
+          [ -z "$UPLOAD_KEYSTORE_PASSWORD" ] && miss="$miss UPLOAD_KEYSTORE_PASSWORD"
+          if [ -n "$miss" ]; then
+            echo "::error::GitHub doesn't pass these secrets to the build:$miss. They must be REPOSITORY secrets: Settings → Secrets and variables → Actions → 'Repository secrets' (not Environments, Codespaces or Dependabot), with exactly these names."; exit 1; fi
           echo "$UPLOAD_KEYSTORE_B64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/upload.jks"
           export UPLOAD_KEYSTORE_FILE="$RUNNER_TEMP/upload.jks"
           chmod +x gradlew
