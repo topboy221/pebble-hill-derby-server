@@ -390,13 +390,13 @@ function validCar(o, custom) {
   if (custom) return car;
   if (!STD_PAINTS.includes(car.paint.toLowerCase())) car.paint = STD_PAINTS[nearest(car.paint, STD_PAINTS)];
   if (typeof car.fin === 'string') car.fin = nearest(car.fin, RIM_FIN_HEX);
-  car.rs = 18; car.off = 0; car.rh = 0;
+  car.rs = 18; car.off = 0; car.rh = 0; car.acc = null;
   return car;
 }
 function validCarAny(o) {
   const i = (v, m) => Number.isInteger(v) && v >= 0 && v < m ? v : 0;
   // fin: a standard rim finish (index) or, for players, any rim colour ('#rrggbb'); AI cars only ever get the standard ones
-  return { design: i(o.design, 32), paint: /^#[0-9a-f]{6}$/i.test(o.paint) ? o.paint : '#c8231f', rim: i(o.rim, 32), fin: /^#[0-9a-f]{6}$/i.test(o.fin) ? o.fin.toLowerCase() : i(o.fin, 32), rs: Number.isInteger(o.rs) && o.rs >= 13 && o.rs <= 22 ? o.rs : 18, off: Number.isInteger(o.off) && o.off >= 0 && o.off <= 16 ? o.off : 0, rh: Number.isInteger(o.rh) && Math.abs(o.rh) <= 3 ? o.rh : 0 };   // rs: rim size in inches
+  return { design: i(o.design, 32), paint: /^#[0-9a-f]{6}$/i.test(o.paint) ? o.paint : '#c8231f', rim: i(o.rim, 32), fin: /^#[0-9a-f]{6}$/i.test(o.fin) ? o.fin.toLowerCase() : i(o.fin, 32), rs: Number.isInteger(o.rs) && o.rs >= 13 && o.rs <= 22 ? o.rs : 18, off: Number.isInteger(o.off) && o.off >= 0 && o.off <= 16 ? o.off : 0, rh: Number.isInteger(o.rh) && Math.abs(o.rh) <= 3 ? o.rh : 0, acc: /^#[0-9a-f]{6}$/i.test(o.acc) ? o.acc.toLowerCase() : null };   // acc: graphics colour (null = the car's own)   // rs: rim size in inches
 }
 function authed(c, name, guest, uid) {
   const key = name.toLowerCase();
