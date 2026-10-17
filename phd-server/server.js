@@ -17,6 +17,7 @@ const GAME_FILE = ['pebble-hill-derby.html', 'index.html'].map(f => path.join(__
 const TRACK_IDS = ['pebble', 'city', 'nomahe', 'tokiyama', 'whitecow', 'aloma', 'mesozon'];           // keep in sync with TRACKS in the game
 const MAX_PLAYERS = 12;                           // a normal race
 const SURV_PLAYERS = 50;                          // Survival: 50 cars, AI fills whatever the humans don't
+const SURV_MIN = 13;                              // ...and needs at least 13 cars (players + AI) to start: prizes are shared by the field size
 const TIMES = {                                   // seconds
   readyWait: 15,         // countdown once more than half the players (or the host) are ready
   loadTimeout: 25,       // waiting for everyone to build the track
@@ -50,7 +51,7 @@ async function sbWho(token) {   // a player's access token -> {id, name}, or nul
   const p = await fetch(SB_URL + '/rest/v1/rpc/get_profile', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, h), body: '{}', signal: AbortSignal.timeout(8000) });
   if (!p.ok) throw new Error('profile ' + p.status + ' ' + (await p.text()).slice(0, 200));
   const prof = await p.json();
-  return prof && prof.racer_name ? { id: user.id, name: String(prof.racer_name) } : null;
+  return prof && prof.racer_name ? { id: user.id, name: String(prof.racer_name), custom: Array.isArray(prof.perks) && prof.perks.includes('custom') } : null;
 }
 // private-server passwords
 function hashPass(pass, salt) { return crypto.scryptSync(pass, salt, 64).toString('hex'); }
@@ -112,7 +113,7 @@ function lobbyInfo(L) {
     id: L.id, name: L.name, locked: L.private, host: L.host, state: L.state, track: L.nextTrack || null, first: !L.races,
     countdown: L.timer ? Math.max(0, Math.ceil((L.timerEnds - Date.now()) / 1000)) : null,
     players: L.players.map(c => ({ id: c.id, name: c.name, guest: c.guest, car: c.car, ready: !!c.ready, racing: !!(L.race && L.race.racers.has(c.id)) })),
-    max: L.max, mode: L.mode, bots: !!L.bots, botList: botsFor(L, L.players.length).map(b => ({ name: b.name, paint: b.car.paint })),
+    max: L.max, mode: L.mode, min: L.mode === 'survival' ? SURV_MIN : 0, bots: !!L.bots, botList: botsFor(L, L.players.length).map(b => ({ name: b.name, paint: b.car.paint })),
   };
 }
 const LAG = +process.env.PHD_LAG || 0;            // test only: fake network delay (ms each way)
@@ -125,8 +126,10 @@ function clearTimer(L) { clearTimeout(L.timer); L.timer = null; }
 
 // ready check: the countdown runs while more than half of the players in the lobby are ready, or the host is.
 // Someone un-readying (or joining) so that's no longer true stops it. A quick-join lobby needs 2 people unless AI cars fill the grid.
+const survShort = L => L.mode === 'survival' && L.players.length + botsFor(L, L.players.length).length < SURV_MIN;
 function readyToGo(L) {
   const n = L.players.length; if (!n) return false;
+  if (survShort(L)) return false;
   if (!L.private && !L.bots && n < 2) return false;
   const host = L.players.find(p => p.id === L.host), rdy = L.players.filter(p => p.ready).length;
   return !!(host && host.ready) || rdy * 2 > n;
@@ -152,7 +155,10 @@ function leaveLobby(c) {
   const L = c.lobby; if (!L) return;
   L.players = L.players.filter(p => p !== c); c.lobby = null; c.ready = false;
   if (L.race && L.race.racers.has(c.id)) {
-    L.race.racers.delete(c.id); L.race.states.delete(c.id); L.race.loaded.delete(c.id);
+    const r = L.race.racers.get(c.id);
+    if (r.fin && L.state === 'race') r.left = true;                    // already over the line: stays in the results (and was paid)
+    else L.race.racers.delete(c.id);
+    L.race.states.delete(c.id); L.race.loaded.delete(c.id);
     broadcast(L, { t: 'gone', id: c.id });
     if (L.race.botHost === c.id) dropBots(L, true);                    // their game was driving the AI cars
     if (L.state === 'loading') maybeGo(L); else if (L.state === 'race') maybeEnd(L);
@@ -169,6 +175,7 @@ function startRace(L) {
   if (L.state !== 'lobby' && L.state !== 'results') return;
   if (!L.players.length) return;
   clearTimer(L); L.vote = null;
+  if (survShort(L)) { L.state = 'lobby'; pushLobby(L); return; }   // too few cars for Survival (AI switched off): wait in the lobby
   const track = L.nextTrack || pick(TRACK_IDS); L.nextTrack = null; L.track = track; L.races++;
   // someone's connection has gone quiet (phone locked, network switch): drop them if it's been long,
   // otherwise hold the start a moment so their phone can reconnect and keep its seat
@@ -220,6 +227,7 @@ function go(L) {
   // everyone gets the same start moment on the server clock (plus a little slack for delivery), so all countdowns hit GO together
   const now = Date.now();
   L.state = 'race'; L.race.start = now + TIMES.countdown * 1000 + 700;
+  L.race.field = L.race.racers.size;                                // the field size prizes are worked out for (fixed at the start)
   for (const c of L.players) if (L.race.racers.has(c.id)) send(c, { t: 'go', countdown: TIMES.countdown, startAt: L.race.start, now });
   L.race.snapTimer = setInterval(() => snap(L), SNAP_MS);
   L.race.idleTimer = setInterval(() => checkIdle(L), 1000);
@@ -284,10 +292,14 @@ function onFinish(c, time, bot) {
     if (!isFinite(t) || Math.abs(t - elapsed) > 3) t = elapsed;                  // trust the client's clock only within 3 s of ours
     if (t < 20) return;                                                          // impossible time: ignore
   } else if (!isFinite(t)) t = elapsed;
-  r.fin = t;
+  // finishing order is the order the server hears about it; a time can't come out faster than someone who crossed earlier
+  const prev = [...L.race.racers.values()].filter(x => x.fin);
+  t = Math.max(t, ...prev.map(x => x.fin));
+  r.fin = t; r.ord = prev.length + 1;
   if (!L.race.firstFin) { L.race.firstFin = Date.now(); clearTimeout(L.race.endTimer); L.race.endTimer = setTimeout(() => endRace(L), TIMES.afterFirst * 1000); }
-  const place = [...L.race.racers.values()].filter(x => x.fin).length;
+  const place = r.ord;
   broadcast(L, { t: 'fin', id: r.id, time: t, place });
+  payPrize(L, r, place, true);                                   // your place can't change any more: you're paid right away
   maybeEnd(L);
 }
 function maybeEnd(L) {
@@ -299,7 +311,7 @@ function endRace(L) {
   if (L.state !== 'race') return;
   clearInterval(L.race.snapTimer); clearInterval(L.race.idleTimer); clearTimeout(L.race.endTimer);
   const rows = [...L.race.racers.values()]
-    .sort((a, b) => (a.fin && b.fin) ? a.fin - b.fin : a.fin ? -1 : b.fin ? 1 : b.lastS - a.lastS)
+    .sort((a, b) => (a.fin && b.fin) ? a.ord - b.ord : a.fin ? -1 : b.fin ? 1 : b.lastS - a.lastS)
     .map((r, i) => ({ id: r.id, name: r.name, guest: r.guest, bot: !!r.bot, paint: r.car && r.car.paint, time: r.fin || null, place: i + 1 }));
   L.lastRows = rows;
   L.state = 'results';
@@ -311,24 +323,27 @@ function endRace(L) {
   pushLobby(L);
 }
 // cash prizes: every signed-in racer who took part (not guests, AI, or anyone taken out for going silent) gets paid by the
-// database for their place in a field of this many cars; they're told their winnings and new balance
+// database for their place in a field of this many cars, and is told their winnings and new balance. Finishers are paid the
+// moment they cross the line (so leaving early loses nothing); anyone still out on the course when the race ends, then.
 function payPrizes(L, rows) {
-  if (!SB_URL || !SB_SECRET || !L.race) return;
-  const race = L.race, cars = rows.length; if (cars < 2) return;
-  for (const row of rows) {
-    const r = race.racers.get(row.id); if (!r || r.bot || r.guest || !r.key || r.dnf) continue;
-    fetch(SB_URL + '/rest/v1/rpc/award_online_race', { method: 'POST', signal: AbortSignal.timeout(15000),
-      headers: { apikey: SB_SECRET, Authorization: 'Bearer ' + SB_SECRET, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ player: r.key, race: race.rid, place: row.place, cars, finished: !!r.fin, track: race.track }) })
-      .then(async res => {
-        const txt = await res.text(); if (!res.ok) throw new Error(res.status + ' ' + txt.slice(0, 200));
-        const out = JSON.parse(txt || '{}');
-        // tell the player, wherever they are now (still in the lobby, or back in the menus on a new connection)
-        const c = [...clients].find(o => o.key === r.key && o.ws.readyState === 1);
-        if (c) send(c, { t: 'wallet', earned: out.earned || 0, cash: out.cash, gold: out.gold, place: row.place, cars });
-      })
-      .catch(e => console.error('[prizes] ' + r.name + ': ' + e.message));
-  }
+  if (!L.race) return;
+  for (const row of rows) { const r = L.race.racers.get(row.id); if (r && !r.paid) payPrize(L, r, row.place, !!r.fin); }
+}
+function payPrize(L, r, place, finished) {
+  const race = L.race; if (!SB_URL || !SB_SECRET || !race || r.paid || r.bot || r.guest || !r.key || r.dnf) return;
+  const cars = Math.max(race.field || race.racers.size, place); if (cars < 2) return;
+  r.paid = true;
+  fetch(SB_URL + '/rest/v1/rpc/award_online_race', { method: 'POST', signal: AbortSignal.timeout(15000),
+    headers: { apikey: SB_SECRET, Authorization: 'Bearer ' + SB_SECRET, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ player: r.key, race: race.rid, place, cars, finished, track: race.track, mode: L.mode }) })
+    .then(async res => {
+      const txt = await res.text(); if (!res.ok) throw new Error(res.status + ' ' + txt.slice(0, 200));
+      const out = JSON.parse(txt || '{}');
+      // tell the player, wherever they are now (still in the race, in the lobby, or back in the menus on a new connection)
+      const c = [...clients].find(o => o.key === r.key && o.ws.readyState === 1);
+      if (c) send(c, { t: 'wallet', earned: out.earned || 0, cash: out.cash, gold: out.gold, place, cars, race: race.rid });
+    })
+    .catch(e => console.error('[prizes] ' + r.name + ': ' + e.message));
 }
 function voteInfo(L) {
   const V = L.vote; if (!V) return null;
@@ -364,8 +379,21 @@ function closeVote(L) {
 function backToLobby(L) { clearTimer(L); if (L.race) { clearInterval(L.race.snapTimer); clearInterval(L.race.idleTimer); clearTimeout(L.race.endTimer); } L.race = null; L.state = 'lobby'; checkAutoStart(L); pushLobby(L); }
 
 /* ---------------- messages ---------------- */
-function validCar(o) {
+// without the garage's custom unlock (200 gold) a car only gets the standard paints, rim finishes, rim size and stance
+const STD_PAINTS = ['#f0f0ea', '#aeb5bf', '#1d1e24', '#c8231f', '#1f5fd6'];
+const RIM_FIN_HEX = ['#c4c9d0', '#4b5059', '#1d1e23', '#c9a24a', '#eeeeea', '#8a5a33'];
+function hexDist(a, b) { const x = parseInt(a.slice(1), 16), y = parseInt(b.slice(1), 16); return ((x >> 16 & 255) - (y >> 16 & 255)) ** 2 + ((x >> 8 & 255) - (y >> 8 & 255)) ** 2 + ((x & 255) - (y & 255)) ** 2; }
+const nearest = (hex, list) => list.reduce((bi, h, i) => hexDist(h, hex) < hexDist(list[bi], hex) ? i : bi, 0);
+function validCar(o, custom) {
   if (!o || typeof o !== 'object') return null;
+  const car = validCarAny(o);
+  if (custom) return car;
+  if (!STD_PAINTS.includes(car.paint.toLowerCase())) car.paint = STD_PAINTS[nearest(car.paint, STD_PAINTS)];
+  if (typeof car.fin === 'string') car.fin = nearest(car.fin, RIM_FIN_HEX);
+  car.rs = 18; car.off = 0; car.rh = 0;
+  return car;
+}
+function validCarAny(o) {
   const i = (v, m) => Number.isInteger(v) && v >= 0 && v < m ? v : 0;
   // fin: a standard rim finish (index) or, for players, any rim colour ('#rrggbb'); AI cars only ever get the standard ones
   return { design: i(o.design, 32), paint: /^#[0-9a-f]{6}$/i.test(o.paint) ? o.paint : '#c8231f', rim: i(o.rim, 32), fin: /^#[0-9a-f]{6}$/i.test(o.fin) ? o.fin.toLowerCase() : i(o.fin, 32), rs: Number.isInteger(o.rs) && o.rs >= 13 && o.rs <= 22 ? o.rs : 18, off: Number.isInteger(o.off) && o.off >= 0 && o.off <= 16 ? o.off : 0, rh: Number.isInteger(o.rh) && Math.abs(o.rh) <= 3 ? o.rh : 0 };   // rs: rim size in inches
@@ -388,13 +416,13 @@ function rejoin(c, sid) {
   sid = String(sid || '');
   // the old connection may still look alive here (it died silently): take the seat over from it right away
   for (const o of clients) if (o !== c && o.sid === sid && o.name) {
-    parked.set(sid, { name: o.name, key: o.key, guest: o.guest, car: o.car, lobbyId: o.lobby && o.lobby.id, until: Date.now() + PARK_MS });
+    parked.set(sid, { name: o.name, key: o.key, guest: o.guest, custom: o.custom, car: o.car, lobbyId: o.lobby && o.lobby.id, until: Date.now() + PARK_MS });
     leaveLobby(o); if (online.get(o.name.toLowerCase()) === o) online.delete(o.name.toLowerCase());
     o.sid = null; o.name = null; try { o.ws.terminate(); } catch (e) {}
   }
   const P = parked.get(sid); parked.delete(sid);
   if (!P || P.until < Date.now()) return send(c, { t: 'error', where: 'rejoin', msg: 'Session over.' });
-  c.sid = sid; c.car = P.car || c.car;
+  c.sid = sid; c.custom = !!P.custom; c.car = P.car || c.car;
   if (P.guest && online.has(P.name.toLowerCase())) return send(c, { t: 'error', where: 'rejoin', msg: 'Name in use.' });
   authed(c, P.name, P.guest, P.key);
   const L = P.lobbyId && lobbies.get(P.lobbyId);
@@ -413,6 +441,7 @@ function handle(c, m) {
       sbWho(token).then(who => {
         if (c.ws.readyState !== 1) return;
         if (!who) { failed(c.ip); return send(c, { t: 'error', where: 'sb', msg: 'Your sign-in has expired. Sign in again.' }); }
+        c.custom = !!who.custom; c.car = validCar(c.car, c.custom);
         authed(c, who.name, false, who.id);
       }).catch(e => {
         console.error('[supabase] ' + e.message);
@@ -420,31 +449,39 @@ function handle(c, m) {
       });
       return;
     }
+    case 'perks': {   // the player just unlocked something in the garage: check it with the database, then take their new car look
+      const token = String(m.token || ''); if (!c.key || !token || token.length > 8192 || !SB_URL || !SB_KEY) return;
+      sbWho(token).then(who => {
+        if (!who || who.id !== c.key) return;
+        c.custom = !!who.custom; c.car = validCar(m.car || c.car, c.custom); if (c.lobby) pushLobby(c.lobby);
+      }).catch(e => console.error('[supabase] ' + e.message));
+      return;
+    }
     case 'logout': {
-      leaveLobby(c); if (c.name && online.get(c.name.toLowerCase()) === c) online.delete(c.name.toLowerCase()); c.name = null; c.key = null;
+      leaveLobby(c); if (c.name && online.get(c.name.toLowerCase()) === c) online.delete(c.name.toLowerCase()); c.name = null; c.key = null; c.custom = false; c.car = validCar(c.car, false);
       return send(c, { t: 'loggedout' });
     }
   }
   if (!c.name) return send(c, { t: 'error', where: 'auth', msg: 'Sign in first.' });
   switch (m.t) {
-    case 'car': c.car = validCar(m.car); if (c.lobby) pushLobby(c.lobby); return;
+    case 'car': c.car = validCar(m.car, c.custom); if (c.lobby) pushLobby(c.lobby); return;
     case 'list': return send(c, { t: 'lobbies', list: [...lobbies.values()].filter(L => L.private).map(L => ({ id: L.id, name: L.name, players: L.players.length, max: L.max, mode: L.mode, state: L.state, locked: true })) });
     case 'quick': {
-      c.car = validCar(m.car) || c.car;
+      c.car = validCar(m.car, c.custom) || c.car;
       const mode = m.mode === 'survival' ? 'survival' : 'normal';
       const open = [...lobbies.values()].filter(L => !L.private && L.mode === mode && (L.state === 'lobby' || L.state === 'results') && L.players.length < L.max)
         .sort((a, b) => b.players.length - a.players.length || a.created - b.created);
       return joinLobby(c, open[0] || makeLobby({ name: mode === 'survival' ? 'Survival lobby' : 'Open lobby', mode }));
     }
     case 'create': {
-      c.car = validCar(m.car) || c.car;
+      c.car = validCar(m.car, c.custom) || c.car;
       const name = clean(m.name, 24) || (c.name + '\'s server'), pass = String(m.pass || '');
       if (nameBad(name)) return send(c, { t: 'error', where: 'create', msg: 'That server name isn\'t allowed. Pick another one.' });
       if (pass.length < 3 || pass.length > 32) return send(c, { t: 'error', where: 'create', msg: 'Password: 3–32 characters.' });
       return joinLobby(c, makeLobby({ name, pass, mode: m.mode === 'survival' ? 'survival' : 'normal' }));
     }
     case 'join': {
-      c.car = validCar(m.car) || c.car;
+      c.car = validCar(m.car, c.custom) || c.car;
       const L = lobbies.get(String(m.id || '').toUpperCase());
       if (!L) return send(c, { t: 'error', where: 'join', msg: 'Server not found.' });
       if (L.private) {
@@ -614,7 +651,7 @@ wss.on('connection', (ws, req) => {
   ws.on('close', (code, reason) => {
     if (process.env.PHD_DEBUG) console.log('close', c.name, code, String(reason || ''), c.lobby && c.lobby.state);
     clients.delete(c);
-    if (c.sid && c.name) parked.set(c.sid, { name: c.name, key: c.key, guest: c.guest, car: c.car, lobbyId: c.lobby && c.lobby.id, until: Date.now() + PARK_MS });
+    if (c.sid && c.name) parked.set(c.sid, { name: c.name, key: c.key, guest: c.guest, custom: c.custom, car: c.car, lobbyId: c.lobby && c.lobby.id, until: Date.now() + PARK_MS });
     leaveLobby(c); if (c.name && online.get(c.name.toLowerCase()) === c) online.delete(c.name.toLowerCase());
   });
 });
