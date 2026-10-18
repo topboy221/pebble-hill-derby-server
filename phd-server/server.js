@@ -97,11 +97,13 @@ const BOT_PAINTS = ['#f2c230', '#1f5fd6', '#f0f0ea', '#1f8a4c', '#ef6a1a', '#aeb
 function hsl2hex(h, s, l) { const f = n => { const k = (n + h * 12) % 12, a = s * Math.min(l, 1 - l), c = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); return Math.round(c * 255).toString(16).padStart(2, '0'); }; return '#' + f(0) + f(8) + f(4); }
 function makeBots(n) { return BOT_NAMES.slice(0, n).map((nm, k) => ({ name: nm, car: { design: (k * 5 + 1) % 25, paint: k < BOT_PAINTS.length ? BOT_PAINTS[k] : hsl2hex((k * 0.61803) % 1, 0.6, 0.45), rim: (k * 7) % 6, fin: (k * 3) % 6, rs: 15 + (k * 3) % 6 } }   /* any of the 25 pack bodies */)); }
 const botsFor = (L, humans) => L.bots ? L.botPool.slice(0, Math.max(0, L.max - humans)) : [];
+// the tracks the player starting a lobby has unlocked in Career: the first race is one of these (later races: the vote, any track)
+const validPool = p => { const a = Array.isArray(p) ? [...new Set(p.filter(t => TRACK_IDS.includes(t)))] : []; return a.length ? a : null; };
 function makeLobby(opts) {
   const surv = opts.mode === 'survival', max = surv ? SURV_PLAYERS : MAX_PLAYERS;
   const L = {
     id: code(), name: opts.name, private: !!opts.pass, salt: null, hash: null,
-    host: null, state: 'lobby', players: [], track: pick(TRACK_IDS), nextTrack: null, races: 0,
+    host: null, state: 'lobby', players: [], track: null, nextTrack: null, races: 0, pool: validPool(opts.pool) || TRACK_IDS.slice(),
     timer: null, timerEnds: 0, race: null, vote: null, created: Date.now(), mode: surv ? 'survival' : 'normal', max, bots: surv, botPool: makeBots(max - 1),
   };
   if (opts.pass) { L.salt = crypto.randomBytes(12).toString('hex'); L.hash = hashPass(opts.pass, L.salt); }
@@ -176,7 +178,7 @@ function startRace(L) {
   if (!L.players.length) return;
   clearTimer(L); L.vote = null;
   if (survShort(L)) { L.state = 'lobby'; pushLobby(L); return; }   // too few cars for Survival (AI switched off): wait in the lobby
-  const track = L.nextTrack || pick(TRACK_IDS); L.nextTrack = null; L.track = track; L.races++;
+  const track = L.nextTrack || pick(L.races ? TRACK_IDS : L.pool); L.nextTrack = null; L.track = track; L.races++;
   // someone's connection has gone quiet (phone locked, network switch): drop them if it's been long,
   // otherwise hold the start a moment so their phone can reconnect and keep its seat
   const now0 = Date.now();
@@ -471,14 +473,14 @@ function handle(c, m) {
       const mode = m.mode === 'survival' ? 'survival' : 'normal';
       const open = [...lobbies.values()].filter(L => !L.private && L.mode === mode && (L.state === 'lobby' || L.state === 'results') && L.players.length < L.max)
         .sort((a, b) => b.players.length - a.players.length || a.created - b.created);
-      return joinLobby(c, open[0] || makeLobby({ name: mode === 'survival' ? 'Survival lobby' : 'Open lobby', mode }));
+      return joinLobby(c, open[0] || makeLobby({ name: mode === 'survival' ? 'Survival lobby' : 'Open lobby', mode, pool: m.pool }));
     }
     case 'create': {
       c.car = validCar(m.car, c.custom) || c.car;
       const name = clean(m.name, 24) || (c.name + '\'s server'), pass = String(m.pass || '');
       if (nameBad(name)) return send(c, { t: 'error', where: 'create', msg: 'That server name isn\'t allowed. Pick another one.' });
       if (pass.length < 3 || pass.length > 32) return send(c, { t: 'error', where: 'create', msg: 'Password: 3–32 characters.' });
-      return joinLobby(c, makeLobby({ name, pass, mode: m.mode === 'survival' ? 'survival' : 'normal' }));
+      return joinLobby(c, makeLobby({ name, pass, mode: m.mode === 'survival' ? 'survival' : 'normal', pool: m.pool }));
     }
     case 'join': {
       c.car = validCar(m.car, c.custom) || c.car;
@@ -502,6 +504,8 @@ function handle(c, m) {
     case 'pick': {                                          // the host picks the track for the lobby's first race (null = random)
       const L = c.lobby; if (!L || L.host !== c.id || L.state !== 'lobby' || L.races) return;
       if (m.track != null && !TRACK_IDS.includes(m.track)) return;
+      const pool = validPool(m.pool); if (pool) L.pool = pool;                 // (the host's own unlocked tracks: Random picks from these)
+      if (m.track && pool && !pool.includes(m.track)) return;
       L.nextTrack = m.track || null; pushLobby(L); return; }
     case 'hit': {                                           // a bump: pass the push on to the car that was hit
       const L = c.lobby; if (!L || L.state !== 'race' || !L.race.racers.has(c.id)) return;
