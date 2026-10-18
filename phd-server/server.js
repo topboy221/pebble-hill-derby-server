@@ -392,7 +392,7 @@ function validCar(o, custom) {
   if (custom) return car;
   if (!STD_PAINTS.includes(car.paint.toLowerCase())) car.paint = STD_PAINTS[nearest(car.paint, STD_PAINTS)];
   if (typeof car.fin === 'string') car.fin = nearest(car.fin, RIM_FIN_HEX);
-  car.rs = 18; car.off = 0; car.rh = 0; car.acc = null;
+  car.rs = 18; car.off = 0; car.rh = 0; car.acc = null; if (car.rim >= 4) car.rim = 0;   // (wheel designs 5+ come with the unlock too)
   return car;
 }
 function validCarAny(o) {
