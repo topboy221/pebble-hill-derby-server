@@ -603,7 +603,7 @@ tr.me td{background:#dcecfa}
       </div>
       <div class="glab">Privacy</div>
       <div class="lrow privrow"><a class="btn" id="privLink" href="https://soapcuberacing.world/privacy" target="_blank" rel="noopener">Privacy policy</a><button class="btn" id="adPrivBtn" hidden>Ad privacy choices</button></div>
-      <p class="muted gamever" translate="no">v188</p>
+      <p class="muted gamever" translate="no">v189</p>
       <div class="addiag" id="adDiag" hidden translate="no"><p id="adDiagTxt"></p><button class="btn" id="adTestBtn">Show an ad now</button></div>
       </div>
       <div class="optpane" id="optCtl" hidden>
@@ -3867,7 +3867,11 @@ function respawn(c,manual){
 /* ================= OBSTACLES (Tokiyama) =================
    Everything moves on the shared race clock (raceT), so online every client sees the same noodle angle, the same cannon shot
    and the same hammer swing. Each client only pushes its own cars; remote cars are drawn from the network as usual. */
-const obsClock=()=>state==='race'?raceT:state==='countdown'?-countT:performance.now()/1000;
+// Each race starts the obstacles at a random point of their cycles (OBS_T0: a random number of seconds added to the clock),
+// so a noodle, cannon, hammer, geyser, vent, rock or vine is never in the same place at the same moment twice. Online the
+// server picks it, so every player in the race sees the same thing. (They're already moving during the countdown.)
+let OBS_T0=0;
+const obsClock=()=>state==='race'?OBS_T0+raceT:state==='countdown'?OBS_T0-countT:performance.now()/1000;
 function trackPoint(s,d){const i=clamp(Math.round((S0+s)/DSA),0,NS-1);return {i,x:PX[i]+NX[i]*d,z:PZ[i]+NZ[i]*d,y:RH[i],tx:TX[i],tz:TZ[i],nx:NX[i],nz:NZ[i],s:S[i]};}
 function makeObstacles(cfg){
   const O={spin:[],cannons:[],bumpers:[],fans:[],hammers:[],geysers:[],vents:[],rocks:[],vines:[],id:0,stats:{noodle:0,ball:0,bump:0,hammer:0,out:0,vent:0,rock:0,vine:0}};
@@ -5140,6 +5144,7 @@ function startRace(){
   $('wallet').hidden=true;walletClose();walletLine(null);
   camera.clearViewOffset();
   resetRace();sizeProfile();lastPlace=0;MUS.raceNew=true;   // (a new race: a new racing track)
+  OBS_T0=NET.online?(+NET.obsT0||0):300+Math.random()*3300;   // the obstacles: a fresh random start every race (online: the server's)
   updateCamera(0,true);
   raceLabel=announceTrack?'Quick race · '+TRACK.name:'';announceTrack=false;if(raceLabel)flash(TRACK.name,'Quick race');
   if(raceMode==='survival'&&!NET.online){raceLabel='Survival · '+TRACK.name;flash('Survival','50 cars · you start last');}
@@ -6400,7 +6405,7 @@ function netDropRace(msg){
 }
 /* ---- racing ---- */
 function netRace(m){
-  NET.outMsg=null;NET.botHost=m.botHost!=null?m.botHost:null;NET.raceMode=m.mode==='survival'?'survival':'normal';NET.results=null;NET.vote=null;NET.voted=null;NET.myVote=null;NET.inRace=false;NET.online=true;NET.you=m.you;resultsShown=false;NET.adCounted=false;
+  NET.outMsg=null;NET.obsT0=isFinite(+m.obs)?+m.obs:0;NET.botHost=m.botHost!=null?m.botHost:null;NET.raceMode=m.mode==='survival'?'survival':'normal';NET.results=null;NET.vote=null;NET.voted=null;NET.myVote=null;NET.inRace=false;NET.online=true;NET.you=m.you;resultsShown=false;NET.adCounted=false;
   $('results').hidden=true;$('pause').hidden=true;
   for(const k of MENUS)$(k).hidden=true;$('menubg').hidden=true;$('wallet').hidden=true;walletClose();walletLine(null);WAL.net=null;ADS.counted=false;adFinCancel();
   initAudio();
@@ -6681,7 +6686,7 @@ function tick(dt){
     }
     updateDraft(dt);
     const sub=Math.max(1,Math.ceil(dt/(1/240)));const h=dt/sub;
-    for(let s=0;s<sub;s++){for(const c of cars)if(!c.remote)stepCar(c,h);if(OBS){const ot=raceT-dt+(s+1)*h;for(const c of cars)if(!c.remote)obstacleHits(c,ot,h);}collide(h);}
+    for(let s=0;s<sub;s++){for(const c of cars)if(!c.remote)stepCar(c,h);if(OBS){const ot=OBS_T0+raceT-dt+(s+1)*h;for(const c of cars)if(!c.remote)obstacleHits(c,ot,h);}collide(h);}
     for(const c of cars){
       if(c.remote)continue;
       if(!c.finished&&c.s>=FINISH_S){c.finished=true;c.finishTime=raceT;finishCount++;c.place=finishCount;if(c===player&&NET.inRace)netSend({t:'fin',time:raceT});else if(c.bot&&NET.inRace)netSend({t:'fin',bot:c.netId,time:raceT});
@@ -6726,7 +6731,7 @@ function init(){
   $('loading').hidden=true;onResize();
   showHome();
   requestAnimationFrame(frame);
-  window.__phd={cars,get OBS(){return OBS},get GAPS(){return GAPS},get HALFW(){return HALFW},get rinfo(){return {calls:renderer.info.render.calls,tris:renderer.info.render.triangles}},get player(){return player},get audio(){return snd},get state(){return state},get LEN(){return LEN},get minRad(){return minRad},get DROP(){return DROP},get FINISH_S(){return FINISH_S},get CORNERS(){return CORNERS},get TRACK(){return TRACK},get JUMPS(){return JUMPS},get TUNNELS(){return TUNNELS},get RH(){return RH},startRace,startQuick,input,get scene(){return scene},garageSpin:(a)=>{garage.tt.rotation.y=a;garage.userT=99;},get collCount(){return collCount},placeOnTrack,get KS(){return KS},get S(){return S},get DSA(){return DSA},sim:(sec)=>{for(let t=0;t<sec;t+=1/60)tick(1/60);},frameStep:(sec)=>{for(let t=0;t<sec-1e-6;t+=1/60)tick(1/60);ambient(sec,performance.now());updateTags();renderer.render(scene,camera);},tryPush:c=>tryPush(c),manualReset:()=>manualReset(),respawn:(c,m)=>respawn(c,m),shot:(p,l)=>{camera.position.set(p[0],p[1],p[2]);camera.lookAt(l[0],l[1],l[2]);camera.updateMatrixWorld();renderer.render(scene,camera);return renderer.domElement.toDataURL('image/png');},get camera(){return camera},get NET(){return NET},netLag:(l,n)=>netLag(l,n),netRemotes:(now,dt)=>netRemotes(now,dt),newCar:(o)=>newCar(o),groundAt:(x,z)=>{const c={x,z,idx:0,d:0,along:0};c.idx=nearest(x,z,80);locate(c);return groundOf(c).h;},get countT(){return countT},get raceT(){return raceT},set noLoop(v){dbgNoLoop=v},get cars2(){return cars},get world(){return world},get PX(){return PX},get PZ(){return PZ},get RHB(){return RHB},get NX(){return NX},get NZ(){return NZ},LINEHAT:i=>LINEH[i],updateTags:()=>updateTags(),get ACC(){return ACC},get CAR(){return CAR},get HARD_AI(){return HARD_AI},get CTL(){return CTL},HARD,set HARD_AI(v){HARD_AI=v;if(v)hardAiSetup();},hits:()=>({aa:collide.aa||0,pl:collide.pl||0,rear:collide.rear||0,side:collide.side||0}),hitsReset:()=>{collide.aa=0;collide.pl=0;collide.rear=0;collide.side=0;collide.last=new Map();},get careerRun(){return careerRun},careerStartCup:(id,f)=>careerStartCup(id,f),careerStartSurv:id=>careerStartSurv(id),get menuScreen(){return menuScreen},showScreen:n=>showScreen(n),saveBest:(t,id)=>saveBest(t,id),netSend:m=>netSend(m),iapBuy:id=>iapBuy(id),OPT,stanceFits:()=>DESIGNS.map((d,i)=>[d.name,stanceFit(carGeos(i))]),applyOpts:()=>applyOpts(),PAL_TIMES,taBest:id=>taBest(id),hullOf:c=>hullOf(c),nameBad:n=>nameBad(n),ghostTouching:c=>ghostTouching(c),REGIONS,REG,ADS,adFinish,CAR_SHOP,ownsCar,driveDesign,get sel(){return sel},MUS,MUSIC,musicTick:()=>musicTick(),musWant:()=>musWant(),get resultsShown(){return resultsShown},DESIGNS,carGeoCache,rebuildGarageCar:()=>rebuildGarageCar(),effSel:()=>effSel(),customOK:()=>customOK(),mySel:()=>mySel(),applySel:()=>applySel(),acctLoadProfile:()=>acctLoadProfile(),CUS,get PERK_GOLD(){return PERK_GOLD},adShow:(n,f)=>adShow(n,f),adsInit:()=>adsInit(),cannonBoom:(v,p)=>cannonBoom(v,p),WAL,walletSync:()=>walletSync(),I18,tr:t=>tr(t),setLang:l=>setLang(l),get LANG(){return LANG}};
+  window.__phd={cars,get OBS(){return OBS},get GAPS(){return GAPS},get HALFW(){return HALFW},get rinfo(){return {calls:renderer.info.render.calls,tris:renderer.info.render.triangles}},get player(){return player},get audio(){return snd},get state(){return state},get LEN(){return LEN},get minRad(){return minRad},get DROP(){return DROP},get FINISH_S(){return FINISH_S},get CORNERS(){return CORNERS},get TRACK(){return TRACK},get JUMPS(){return JUMPS},get TUNNELS(){return TUNNELS},get RH(){return RH},startRace,startQuick,input,get scene(){return scene},garageSpin:(a)=>{garage.tt.rotation.y=a;garage.userT=99;},get collCount(){return collCount},placeOnTrack,get KS(){return KS},get S(){return S},get DSA(){return DSA},sim:(sec)=>{for(let t=0;t<sec;t+=1/60)tick(1/60);},frameStep:(sec)=>{for(let t=0;t<sec-1e-6;t+=1/60)tick(1/60);ambient(sec,performance.now());updateTags();renderer.render(scene,camera);},tryPush:c=>tryPush(c),manualReset:()=>manualReset(),respawn:(c,m)=>respawn(c,m),shot:(p,l)=>{camera.position.set(p[0],p[1],p[2]);camera.lookAt(l[0],l[1],l[2]);camera.updateMatrixWorld();renderer.render(scene,camera);return renderer.domElement.toDataURL('image/png');},get camera(){return camera},get NET(){return NET},netLag:(l,n)=>netLag(l,n),netRemotes:(now,dt)=>netRemotes(now,dt),newCar:(o)=>newCar(o),groundAt:(x,z)=>{const c={x,z,idx:0,d:0,along:0};c.idx=nearest(x,z,80);locate(c);return groundOf(c).h;},get countT(){return countT},get raceT(){return raceT},set noLoop(v){dbgNoLoop=v},get cars2(){return cars},get world(){return world},get PX(){return PX},get PZ(){return PZ},get RHB(){return RHB},get NX(){return NX},get NZ(){return NZ},LINEHAT:i=>LINEH[i],updateTags:()=>updateTags(),get ACC(){return ACC},get CAR(){return CAR},get HARD_AI(){return HARD_AI},get CTL(){return CTL},HARD,set HARD_AI(v){HARD_AI=v;if(v)hardAiSetup();},hits:()=>({aa:collide.aa||0,pl:collide.pl||0,rear:collide.rear||0,side:collide.side||0}),hitsReset:()=>{collide.aa=0;collide.pl=0;collide.rear=0;collide.side=0;collide.last=new Map();},get careerRun(){return careerRun},careerStartCup:(id,f)=>careerStartCup(id,f),careerStartSurv:id=>careerStartSurv(id),get menuScreen(){return menuScreen},showScreen:n=>showScreen(n),saveBest:(t,id)=>saveBest(t,id),netSend:m=>netSend(m),iapBuy:id=>iapBuy(id),OPT,stanceFits:()=>DESIGNS.map((d,i)=>[d.name,stanceFit(carGeos(i))]),applyOpts:()=>applyOpts(),PAL_TIMES,taBest:id=>taBest(id),hullOf:c=>hullOf(c),nameBad:n=>nameBad(n),ghostTouching:c=>ghostTouching(c),REGIONS,REG,ADS,adFinish,CAR_SHOP,ownsCar,driveDesign,get OBS_T0(){return OBS_T0},obsClock:()=>obsClock(),get sel(){return sel},MUS,MUSIC,musicTick:()=>musicTick(),musWant:()=>musWant(),get resultsShown(){return resultsShown},DESIGNS,carGeoCache,rebuildGarageCar:()=>rebuildGarageCar(),effSel:()=>effSel(),customOK:()=>customOK(),mySel:()=>mySel(),applySel:()=>applySel(),acctLoadProfile:()=>acctLoadProfile(),CUS,get PERK_GOLD(){return PERK_GOLD},adShow:(n,f)=>adShow(n,f),adsInit:()=>adsInit(),cannonBoom:(v,p)=>cannonBoom(v,p),WAL,walletSync:()=>walletSync(),I18,tr:t=>tr(t),setLang:l=>setLang(l),get LANG(){return LANG}};
 }
 const fontsReady=(document.fonts&&document.fonts.load)?Promise.all([document.fonts.load('64px "Rammetto One"'),document.fonts.load('800 20px "M PLUS Rounded 1c"')]).catch(()=>{}):Promise.resolve();
 Promise.race([fontsReady,new Promise(r=>setTimeout(r,2500))]).then(()=>setTimeout(init,30));
