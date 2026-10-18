@@ -69,6 +69,8 @@ jobs:
             fs.writeFileSync("www/index.html",h);' "$GAME"
           # the How to play clips sit next to the game (public/howto)
           rm -rf www/howto; if [ -d "$(dirname "$GAME")/howto" ]; then cp -r "$(dirname "$GAME")/howto" www/howto; echo "How to play clips: $(ls www/howto | tr '\n' ' ')"; else echo "::warning::No howto folder next to the game: How to play will have no clips."; fi
+          # the music sits next to the game too (public/music)
+          rm -rf www/music; if [ -d "$(dirname "$GAME")/music" ]; then cp -r "$(dirname "$GAME")/music" www/music; echo "Music: $(ls www/music | tr '\n' ' ')"; else echo "::warning::No music folder next to the game: the game will have no music."; fi
           head -c 200 www/index.html; echo
           npx cap sync android
 
