@@ -628,6 +628,27 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'image/webp', 'Cache-Control': 'public, max-age=86400' }); res.end(buf);
     });
   }
+  // the music (public/music/<name>.mp4: AAC audio). Byte ranges, so a track can start part-way through
+  const tune = /^\/music\/([a-z0-9-]{3,40})\.mp4$/.exec(url);
+  if (tune) {
+    const file = path.join(__dirname, 'public', 'music', tune[1] + '.mp4');
+    return fs.stat(file, (err, st) => {
+      if (err || !st.isFile()) { res.writeHead(404); return res.end('Not found'); }
+      const size = st.size, h = { 'Content-Type': 'audio/mp4', 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=86400' };
+      const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+      if (m && (m[1] || m[2])) {
+        let a = m[1] ? +m[1] : size - +m[2], b = m[1] && m[2] ? +m[2] : size - 1;
+        if (a < 0) a = 0; b = Math.min(b, size - 1);
+        if (a > b || a >= size) { res.writeHead(416, { 'Content-Range': 'bytes */' + size }); return res.end(); }
+        res.writeHead(206, Object.assign(h, { 'Content-Range': 'bytes ' + a + '-' + b + '/' + size, 'Content-Length': b - a + 1 }));
+        if (req.method === 'HEAD') return res.end();
+        return fs.createReadStream(file, { start: a, end: b }).pipe(res);
+      }
+      res.writeHead(200, Object.assign(h, { 'Content-Length': size }));
+      if (req.method === 'HEAD') return res.end();
+      fs.createReadStream(file).pipe(res);
+    });
+  }
   if (url === '/health') { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); return res.end(JSON.stringify({ ok: true, online: online.size, lobbies: lobbies.size, accounts: !!(SB_URL && SB_KEY), purchases: !!(RC_AUTH && SB_URL && SB_SECRET), appAds: appAds.from || null })); }
   res.writeHead(404); res.end('Not found');
 });

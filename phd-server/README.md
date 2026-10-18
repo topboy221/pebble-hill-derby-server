@@ -183,7 +183,7 @@ Notes:
 
 ### 7. Your domain (soapcuberacing.world)
 
-This server also serves the How to play clips (`public/howto/*.webp`, at `/howto/…`), the privacy policy (`public/privacy.html`) at `/privacy`, and the ads' `app-ads.txt` at `/app-ads.txt` once you add that file to `public/`. To put them on your own domain:
+This server also serves the How to play clips (`public/howto/*.webp`, at `/howto/…`), the music (`public/music/*.mp4`, at `/music/…`), the privacy policy (`public/privacy.html`) at `/privacy`, and the ads' `app-ads.txt` at `/app-ads.txt`. To put them on your own domain:
 
 1. In Render, open the service and go to **Settings → Custom Domains → Add**. Add `soapcuberacing.world` and `www.soapcuberacing.world`.
 2. Render shows the DNS records to create. Add them at the company you bought the domain from, under its DNS settings:
@@ -192,15 +192,29 @@ This server also serves the How to play clips (`public/howto/*.webp`, at `/howto
 3. Wait until Render shows the domain as *Verified*; it sets up HTTPS by itself. Then `https://soapcuberacing.world/privacy` works.
    The game page is also served at `https://soapcuberacing.world/`.
 4. **The contact email.** The policy gives `privacy@soapcuberacing.world` as the contact address, so make it reach your inbox. Most domain sellers offer free email forwarding (Cloudflare Email Routing works too): forward `privacy@` to your own address. To use a different address, replace the email in `public/privacy.html`.
-5. **app-ads.txt.** MAS keeps its list of ad sellers at `https://yodo1.com/app-ads.txt`. Save that file as `public/app-ads.txt`, and enter `https://soapcuberacing.world` as the developer website in both store accounts. MAS checks it every Monday; if it emails you, download the file again and replace yours.
+5. **app-ads.txt.** The server serves it by itself at `/app-ads.txt`: it copies MAS's list of ad sellers from `https://yodo1.com/app-ads.txt` and refreshes it every 6 hours, so nothing to upload or update. Enter `https://soapcuberacing.world` as the developer website in both store accounts, then open `https://soapcuberacing.world/app-ads.txt` to check it shows a long list. If MAS gives your game its own app-ads.txt microsite (MAS → Games → Manage → Ads Management, e.g. `2v37.ads-txt.site`), put it in the Europe service's environment as `APP_ADS_URL` (with or without `https://`): the server then serves your game's list, and falls back to the general one if that link ever fails. `/health` shows which list is in use under `appAds`. A file at `public/app-ads.txt` overrides both.
 
 ### 8. Money: cash and gold
 
 Cash (green paper money) is won in races. Gold ingots are bought in the apps. Both balances are kept in Supabase, and the game can only show them, never change them:
 
-- **Single player** (Quick race, Custom race, Career, Survival): the game tells the database when a race starts and where you finished. The database works out the prize and pays each race once. A race that ends quicker than anyone could drive that track pays nothing. A player can be paid for at most 150 races a day. Time attack has no prize.
-- **Online races**: this server saw the race, so it pays every signed-in racer after the results (it needs `SUPABASE_SECRET_KEY`, see step 4). Guests don't earn cash.
-- **Prize per race**: it depends on the number of cars and your place. 1st of 12 wins 3,050, last of 12 wins 300. 1st of 50 (Survival) wins 9,900, last wins 1,000. 1st of 2 wins 700. A race of 12 pays about 1,400 on average. The formula is `phd_race_prize` in `schema.sql`.
+- **Single player** (Quick race, Custom race, Career, Survival, Time attack): the game tells the database when a race starts and where you finished. The database works out the prize and pays each race once. A race that ends quicker than anyone could drive that track pays nothing. A player can be paid for at most 150 races a day.
+- **Online races**: this server saw the race, so it pays every signed-in racer the moment they cross the line (it needs `SUPABASE_SECRET_KEY`, see step 4). Guests don't earn cash.
+
+**Prizes** (all in `phd_prize` / `phd_cup_prize` in `schema.sql`):
+
+| Place | Race (12 cars) | Race, Pebble Hill | Survival (50 cars) | Survival, Pebble Hill |
+|---|---|---|---|---|
+| 1st | 1,500 | 1,200 | 5,000 | 3,500 |
+| 2nd | 1,100 | 900 | 4,000 | 2,700 |
+| 3rd | 800 | 700 | 3,500 | 2,200 |
+| 4th | 600 | 500 | 3,400 | 2,150 |
+| after that | 50 less a place (11th: 250) | 50 less a place (11th: 150) | 100 less a place (0 from 38th) | 50 less a place (0 from 47th) |
+| last | 0 | 0 | 0 | 0 |
+
+- **Career cups**: the race table above. Race 2 pays 20% more, race 3 another 30% on top (×1.56), to the nearest 100 (1st: 1,500 → 1,800 → 2,300). Winning the cup on points adds **10,000** (once per go at the cup, and only if all three races were raced). Career Survival bonuses pay like Survival.
+- **Time attack**: beating Pal's time on a track pays **10,000 cash + 10 gold**, once per track. Pal's times are in the `ta_targets` table (seconds; the game reads them when it starts, so they can be changed there). Pal's times: Pebble Hill 1:33.18, City Scape 1:54.61, Nomahe 2:13.89, Tokiyama 1:32.81, Whitecow 1:37.18, Aloma 2:10.87, Mesozon 2:33.39.
+- **Online**: the same tables. A field that isn't full pays its share of them: 3 cars in a race get 3/12 (25%), 25 cars in Survival get 25/50 (50%). AI cars count as cars. Online Survival only starts with at least 13 cars (players + AI); with AI on it always has 50.
 
 **Gold packs.** Three **consumable** in-app products, with the same ids in Google Play Console (and later App Store Connect) and RevenueCat. Step 10 shows where to make them.
 
@@ -213,6 +227,12 @@ Cash (green paper money) is won in races. Gold ingots are bought in the apps. Bo
 You set the prices in the stores (in US dollars; the store works out the other currencies).
 
 To change how much gold a pack gives, or to add a pack, edit the `gold_products` table in Supabase (the game's list is `GOLD_PACKS` in the game file). The purchase reaches the database through the RevenueCat webhook from step 5. A refund takes the gold back.
+
+**Music.** Three playlists, each played in a random order: **lounge** in the menus (`main-lounge`, `lounge-perc`, `super-easy`), **garage** in the garage (`superchill`), **racing** from GO until you cross the line (`beat-lover`, `percussion-finger`, `quid-racer`, `quister`). A playlist starting afresh often begins its track part-way through, for variety. The files are AAC audio in `.mp4` files (plays on Android and iPhone), evened out to the same loudness (-16 LUFS), in `public/music/`; the app build copies them into the app. Music has its own volume in Options (starts at 50%), and the speaker button in a race is now a music on/off button (sound effects keep playing). To add a track: convert it the same way (`ffmpeg -i in.ogg -af loudnorm=I=-16:TP=-1.5 -c:a aac -b:a 112k -ar 44100 -f mp4 out.mp4`), put it in `public/music/` (lower-case name, no spaces), and add its name and length in seconds to `MUSIC` in the game file.
+
+**Custom colours & wheel tuning (200 gold).** Any body colour, a second colour for the graphics of the GT44, Carato, Ryper, 3EM (red lower body), Retta C18 and Shimita, any wheel colour, wheel size, offset and ride height are a one-time unlock. Without it a player picks from the standard paints (white, silver, black, red, blue) and rim finishes, on 18" rims and the stock stance; the custom picks they had are kept and come back once they unlock. The database does the buying (`buy_perk`) and records it in `profiles.perks`; the game server checks it too, so a player who hasn't unlocked it can't show a custom look to others online. To change the price, edit the `perk_prices` table (the game reads it with `perk_shop`). Run `schema.sql` again after updating to add all this.
+
+**Online prizes** are paid the moment a racer crosses the line (their place can't change after that), so leaving straight away loses nothing. Racers still on the course when the race ends are paid then.
 
 **The car shop.** Every car has a price in cash and in gold. Every player has one stock car, the Shutter RR. The rest are bought in the garage, which lists them from the cheapest up. A car you haven't bought can be looked at and painted, but you race in your own car. The database does the buying (`buy_car`): it checks the balance, takes the money and adds the car to `profiles.cars`, so a player can't give themselves a car.
 
@@ -274,9 +294,10 @@ Ads in the test app: add your phone in the MAS dashboard (*Management → Testin
 
 Purchases only work in a copy of the app that came from Google Play, so this is done through Play's **internal testing** (open to new personal accounts straight away, no 12-tester rule).
 
-1. **Your upload key** (Google uses it to check that uploads really come from you). Keep the file `soapcube-upload.jks` and its password somewhere safe, *not* in the repository. In GitHub: **Settings → Secrets and variables → Actions → New repository secret**, twice:
-   - `UPLOAD_KEYSTORE_B64`: the whole text of `UPLOAD_KEYSTORE_B64.txt`
-   - `UPLOAD_KEYSTORE_PASSWORD`: the text of `UPLOAD_KEYSTORE_PASSWORD.txt`
+1. **Your upload key** (Google uses it to check that uploads really come from you). Keep `soapcube-upload.jks` and its password somewhere safe, *not* in the repository.
+   - Put `upload-key.jks.enc` in `phd-server/app/android/`. It's the upload key locked with its password, so it's safe in the repository: it can't be used without the password.
+   - In GitHub: **Settings → Secrets and variables → Actions → New repository secret**: name `UPLOAD_KEYSTORE_PASSWORD`, value: the text of `UPLOAD_KEYSTORE_PASSWORD.txt`.
+   - (Instead of the locked file, a second secret `UPLOAD_KEYSTORE_B64` with the text of `UPLOAD_KEYSTORE_B64.txt` also works.)
 2. **Build for Play.** **Actions → Android test app → Run workflow**, pick **Google Play (AAB to upload)**. Download the artifact **soapcube-racing-play**: it has `app-release.aab` inside. Every run gets a higher build number, as Play wants.
 3. **Upload it.** Play Console → your app → **Test and release → Testing → Internal testing → Create new release**. Let Google manage the app signing key (the default), upload `app-release.aab`, save and roll out. Under **Testers**, add your Gmail address and open the **join link** on your phone, then install the game from the Play Store. (Uninstall the test APK first: it's signed with a different key.)
 4. **Payments profile.** Play Console → **Settings → Payments profile**: set one up (needed to sell anything).
@@ -289,6 +310,27 @@ Purchases only work in a copy of the app that came from Google Play, so this is 
    - Copy the app's public SDK key (`goog_…`) into `REVENUECAT_ANDROID_KEY` in the game file (or send it to me).
    - Check the webhook from step 5 points at your server.
 8. **Try it.** Build for Play again (with the key in the game), upload, update from the Play Store, sign in, open the wallet and buy a pack. The gold arrives a few seconds later (RevenueCat → this server → Supabase).
+
+### 11. More servers (Americas, Asia)
+
+Every server runs its own lobbies; accounts, money and cars are shared (they're in Supabase). The game pings each server and joins the closest by itself. Players can pick another in **Multiplayer → 🌍 (server button)**. Friends who want to race together pick the same one.
+
+The game already knows these three addresses:
+
+| Server | Render region | Service name (gives the address) |
+|---|---|---|
+| Europe | Frankfurt | `pebble-hill-derby-server-eu` (the one you have) |
+| Americas | Virginia (US East) | `pebble-hill-derby-server-us` |
+| Asia | Singapore | `pebble-hill-derby-server-asia` |
+
+For each new one: Render → **New → Web Service** → the same GitHub repository.
+- **Name**: exactly as in the table. It becomes `https://<name>.onrender.com`. If Render adds letters to the address because the name is taken, send me the address.
+- **Region**: as in the table (it can't be changed later).
+- **Root directory, Build command, Start command**: copy them from the Europe service (its **Settings** page).
+- **Instance type**: a paid one ($7/month) for real players. A free instance goes to sleep when nobody plays and takes about a minute to wake up.
+- **Environment**: copy the variables from the Europe service (`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`). The RevenueCat webhook stays pointed at the Europe server only.
+
+Each new commit to GitHub redeploys all of them. A server that isn't set up yet just shows as "offline" in the list.
 
 ## Seeing your players
 
