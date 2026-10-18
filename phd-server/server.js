@@ -205,7 +205,8 @@ function startRace(L) {
   for (const b of bots) L.race.racers.set(b.id, { id: b.id, name: b.name, guest: false, bot: true, car: b.car, fin: null, lastS: 0 });
   L.state = 'loading';
   const roster = [...L.race.racers.values()].map(r => ({ id: r.id, name: r.name, guest: r.guest, car: r.car, slot: grid[r.id], bot: !!r.bot }));
-  for (const c of racers) send(c, { t: 'race', track, roster, you: c.id, botHost: L.race.botHost, mode: L.mode });
+  L.race.obs = Math.round((300 + Math.random() * 3300) * 1000) / 1000;   // where the obstacles start their cycles: the same for everyone, new each race
+  for (const c of racers) send(c, { t: 'race', track, roster, you: c.id, botHost: L.race.botHost, mode: L.mode, obs: L.race.obs });
   setTimer(L, TIMES.loadTimeout, () => go(L));
   const chk = setInterval(() => { if (L.state !== 'loading') return clearInterval(chk); maybeGo(L); }, 1000);
   pushLobby(L);
