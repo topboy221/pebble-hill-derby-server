@@ -11,7 +11,8 @@
     "@capacitor/android": "8.5.3",
     "@capacitor/core": "8.5.3",
     "capacitor-yodo1-mas": "file:../capacitor-yodo1-mas",
-    "@revenuecat/purchases-capacitor": "13.6.1"
+    "@revenuecat/purchases-capacitor": "13.6.1",
+    "@capacitor/app": "8.1.2"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.3"
