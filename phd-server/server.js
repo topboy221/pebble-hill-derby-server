@@ -382,7 +382,7 @@ function closeVote(L) {
 function backToLobby(L) { clearTimer(L); if (L.race) { clearInterval(L.race.snapTimer); clearInterval(L.race.idleTimer); clearTimeout(L.race.endTimer); } L.race = null; L.state = 'lobby'; checkAutoStart(L); pushLobby(L); }
 
 /* ---------------- messages ---------------- */
-// without the garage's custom unlock (200 gold) a car only gets the standard paints, rim finishes, rim size and stance
+// without the garage's custom unlock (150 gold) a car only gets the standard paints, rim finishes, rim size and stance
 const STD_PAINTS = ['#f0f0ea', '#aeb5bf', '#1d1e24', '#c8231f', '#1f5fd6'];
 const RIM_FIN_HEX = ['#c4c9d0', '#4b5059', '#1d1e23', '#c9a24a', '#eeeeea', '#8a5a33'];
 function hexDist(a, b) { const x = parseInt(a.slice(1), 16), y = parseInt(b.slice(1), 16); return ((x >> 16 & 255) - (y >> 16 & 255)) ** 2 + ((x >> 8 & 255) - (y >> 8 & 255)) ** 2 + ((x & 255) - (y & 255)) ** 2; }
