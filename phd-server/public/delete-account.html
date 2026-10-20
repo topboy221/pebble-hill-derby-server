@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Delete your account · Soapcube Racing</title>
+<meta name="description" content="Delete your Soapcube Racing account and the data that goes with it.">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&family=Rammetto+One&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1e2340;--muted:#4a5170;--paper:#fffdf6;--line:#e4e0d2;--tomato:#e8453c;--sky:#8ec2e6;--grass:#6aa847;--field:#ffffff;--ok:#2f7d3a}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#eef0f8;--muted:#b4bad2;--paper:#171a2c;--line:#2c3150;--tomato:#ff6a5f;--sky:#1d2b4a;--grass:#2f5a2a;--field:#20243a;--ok:#7fd08a}}
+:root[data-theme="dark"]{--ink:#eef0f8;--muted:#b4bad2;--paper:#171a2c;--line:#2c3150;--tomato:#ff6a5f;--sky:#1d2b4a;--grass:#2f5a2a;--field:#20243a;--ok:#7fd08a}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:500 16px/1.6 'M PLUS Rounded 1c',system-ui,sans-serif}
+header{background:var(--sky);border-bottom:14px solid var(--grass);padding:36px 0 24px}
+header .in,main{max-width:760px;margin:0 auto;padding-left:16px;padding-right:16px}
+h1{font:400 clamp(28px,6vw,40px)/1.1 'Rammetto One','Arial Black',sans-serif;margin:0 0 8px}
+header p{margin:0;font-weight:800;color:var(--muted)}
+main{padding-top:8px;padding-bottom:56px}
+h2{font:400 20px/1.25 'Rammetto One','Arial Black',sans-serif;margin:36px 0 10px}
+p,li{max-width:68ch}
+ul,ol{padding-left:22px}
+li{margin:4px 0}
+a{color:var(--tomato);font-weight:800}
+.box{border:2px solid var(--line);border-radius:14px;padding:16px;margin:16px 0}
+label{display:block;font-weight:800;margin:12px 0 4px}
+input[type=email],input[type=password],input[type=text]{width:100%;max-width:420px;font:inherit;padding:10px 12px;border:2px solid var(--line);border-radius:10px;background:var(--field);color:var(--ink)}
+input:focus{outline:3px solid var(--sky);outline-offset:1px}
+.chk{display:flex;gap:10px;align-items:flex-start;font-weight:500;margin-top:14px}
+.chk input{margin-top:6px;width:18px;height:18px;flex:none}
+button{font:800 16px/1 'M PLUS Rounded 1c',system-ui,sans-serif;padding:12px 20px;border-radius:12px;border:2px solid var(--ink);background:var(--paper);color:var(--ink);cursor:pointer;margin:16px 10px 0 0}
+button.danger{background:var(--tomato);border-color:var(--tomato);color:#fff}
+button:disabled{opacity:.55;cursor:default}
+.msg{font-weight:800;margin-top:12px;min-height:1.6em}
+.msg.err{color:var(--tomato)}
+.msg.ok{color:var(--ok)}
+[hidden]{display:none!important}
+footer{color:var(--muted);font-size:14px;margin-top:40px}
+</style>
+</head>
+<body>
+<header><div class="in">
+  <h1>Delete your account</h1>
+  <p>Soapcube Racing</p>
+</div></header>
+<main>
+<p>You can delete your Soapcube Racing account here, or in the game under <strong>Account → Delete account</strong>.</p>
+
+<h2>What gets deleted</h2>
+<ul>
+  <li>Your account: email address, password and racer name.</li>
+  <li>Your progress: best times, career progress, cars you own and unlocks.</li>
+  <li>Your cash and gold balances, and the record of how they changed.</li>
+</ul>
+<p>This happens straight away and can't be undone. Gold you bought is lost with the account and isn't refunded.</p>
+<h2>What we keep</h2>
+<ul>
+  <li>Records of real-money purchases (gold packs), for as long as Italian tax and accounting law requires: usually up to 10 years. They aren't used for anything else.</li>
+</ul>
+
+<h2>Delete it now</h2>
+<div class="box" id="step1">
+  <p>Sign in with the email and password of the account you want to delete.</p>
+  <form id="f1" novalidate>
+    <label for="em">Email</label>
+    <input id="em" type="email" autocomplete="email" required>
+    <label for="pw">Password</label>
+    <input id="pw" type="password" autocomplete="current-password" required>
+    <div><button type="submit" id="go1">Sign in</button></div>
+  </form>
+  <div class="msg" id="m1" role="status" aria-live="polite"></div>
+</div>
+
+<div class="box" id="step2" hidden>
+  <p>Signed in as <strong id="who"></strong>.</p>
+  <label class="chk"><input type="checkbox" id="sure"> <span>I understand my account, progress, cars and gold will be deleted for good.</span></label>
+  <div><button type="button" class="danger" id="go2" disabled>Delete my account</button><button type="button" id="cancel">Cancel</button></div>
+  <div class="msg" id="m2" role="status" aria-live="polite"></div>
+</div>
+
+<div class="box" id="done" hidden>
+  <p class="msg ok">Your account has been deleted.</p>
+  <p>You can keep playing as a guest.</p>
+</div>
+
+<h2>Can't sign in?</h2>
+<p>If you forgot your password, reset it in the game (<strong>Account → Sign in → Forgot password</strong>) and come back here. Or email <a href="mailto:privacy@soapcuberacing.world?subject=Delete%20my%20Soapcube%20Racing%20account">privacy@soapcuberacing.world</a> from the email address of your account, with the subject “Delete my account”. We'll delete it within 30 days and tell you when it's done.</p>
+<p>Played only as a guest? Then there's no account to delete: your progress is only on your device, and goes away when you delete the app or clear its data.</p>
+
+<footer>See also the <a href="/privacy">privacy policy</a>. © 2026 Soapcube Racing · soapcuberacing.world</footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<script>
+(function(){
+  var CFG=(window.PHD_SUPABASE&&window.PHD_SUPABASE.url)?window.PHD_SUPABASE:{url:'https://yruprrzrmlilpnklwaru.supabase.co',key:'sb_publishable_rlV328AfOQHpr2WGtU7lxw_QV6sFJ_B'};
+  var $=function(id){return document.getElementById(id);};
+  var sb=null;
+  function client(){
+    if(!sb&&window.supabase)sb=window.supabase.createClient(CFG.url,CFG.key,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+    return sb;
+  }
+  function say(el,text,cls){el.textContent=text;el.className='msg'+(cls?' '+cls:'');}
+  function errText(e){
+    var m=String((e&&e.message)||e||'');
+    if(/invalid login|invalid credentials/i.test(m))return 'Wrong email or password.';
+    if(/email not confirmed/i.test(m))return 'This email isn\'t confirmed yet, so the account was never fully created.';
+    if(/fetch|network|failed to/i.test(m))return 'Can\'t reach the server. Check your connection and try again.';
+    return m||'Something went wrong. Try again.';
+  }
+  $('f1').addEventListener('submit',function(ev){
+    ev.preventDefault();
+    var em=$('em').value.trim(),pw=$('pw').value;
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em))return say($('m1'),'Enter the email address of your account.','err');
+    if(!pw)return say($('m1'),'Enter your password.','err');
+    var c=client();if(!c)return say($('m1'),'Can\'t reach the server. Check your connection and try again.','err');
+    $('go1').disabled=true;say($('m1'),'Signing in…');
+    c.auth.signInWithPassword({email:em,password:pw}).then(function(r){
+      $('go1').disabled=false;
+      if(r.error)return say($('m1'),errText(r.error),'err');
+      say($('m1'),'');$('pw').value='';
+      $('who').textContent=em;$('step1').hidden=true;$('step2').hidden=false;$('sure').checked=false;$('go2').disabled=true;$('sure').focus();
+    }).catch(function(e){$('go1').disabled=false;say($('m1'),errText(e),'err');});
+  });
+  $('sure').addEventListener('change',function(){$('go2').disabled=!this.checked;});
+  $('cancel').addEventListener('click',function(){
+    var c=client();if(c)c.auth.signOut().catch(function(){});
+    $('step2').hidden=true;$('step1').hidden=false;say($('m2'),'');$('em').focus();
+  });
+  $('go2').addEventListener('click',function(){
+    if(!$('sure').checked)return;
+    var c=client();$('go2').disabled=true;$('cancel').disabled=true;say($('m2'),'Deleting…');
+    c.rpc('delete_account').then(function(r){
+      $('cancel').disabled=false;
+      if(r.error){$('go2').disabled=false;return say($('m2'),errText(r.error),'err');}
+      c.auth.signOut().catch(function(){});
+      $('step2').hidden=true;$('done').hidden=false;
+    }).catch(function(e){$('go2').disabled=false;$('cancel').disabled=false;say($('m2'),errText(e),'err');});
+  });
+})();
+</script>
+</body>
+</html>
