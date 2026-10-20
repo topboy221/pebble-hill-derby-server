@@ -616,8 +616,9 @@ const server = http.createServer((req, res) => {
     return;
   }
   if (url === '/hooks/revenuecat') return revenuecatHook(req, res);
-  // plain pages next to the game: the privacy policy (needed by the ad network and the app stores) and the ads' app-ads.txt
-  const PAGES = { '/privacy': ['privacy.html', 'text/html; charset=utf-8'], '/privacy.html': ['privacy.html', 'text/html; charset=utf-8'], '/app-ads.txt': ['app-ads.txt', 'text/plain; charset=utf-8'] };
+  // plain pages next to the game: the privacy policy (needed by the ad network and the app stores), the account deletion page
+  // (Google Play's "delete account" link) and the ads' app-ads.txt
+  const PAGES = { '/privacy': ['privacy.html', 'text/html; charset=utf-8'], '/privacy.html': ['privacy.html', 'text/html; charset=utf-8'], '/delete-account': ['delete-account.html', 'text/html; charset=utf-8'], '/delete-account.html': ['delete-account.html', 'text/html; charset=utf-8'], '/app-ads.txt': ['app-ads.txt', 'text/plain; charset=utf-8'] };
   if (PAGES[url]) {
     return fs.readFile(path.join(__dirname, 'public', PAGES[url][0]), (err, buf) => {
       if (err && url === '/app-ads.txt') return appAdsTxt(res);   // no own copy: serve MAS's list, kept up to date automatically
