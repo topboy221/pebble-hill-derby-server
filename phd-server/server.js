@@ -114,7 +114,7 @@ function lobbyInfo(L) {
   return {
     id: L.id, name: L.name, locked: L.private, host: L.host, state: L.state, track: L.nextTrack || null, first: !L.races,
     countdown: L.timer ? Math.max(0, Math.ceil((L.timerEnds - Date.now()) / 1000)) : null,
-    players: L.players.map(c => ({ id: c.id, name: c.name, guest: c.guest, car: c.car, ready: !!c.ready, racing: !!(L.race && L.race.racers.has(c.id)) })),
+    players: L.players.map(c => ({ id: c.id, name: c.name, guest: c.guest, car: c.car, ready: !!c.ready, racing: !!(L.race && L.race.racers.has(c.id)), away: !!c.away })),
     running: (L.state === 'loading' || L.state === 'race') && L.race ? L.race.track : null,   // a race on now (track): who isn't in it waits for the next one
     max: L.max, mode: L.mode, min: L.mode === 'survival' ? SURV_MIN : 0, bots: !!L.bots, botList: botsFor(L, L.players.length).map(b => ({ name: b.name, paint: b.car.paint })),
   };
@@ -187,7 +187,11 @@ function startRace(L) {
   if (!L.players.length) return;
   if (L.players.some(p => now0 - p.lastSeen > 4500) && (L.holds = (L.holds || 0) + 1) <= 6) { setTimer(L, 1.5, () => startRace(L)); pushLobby(L); return; }
   L.holds = 0;
-  const racers = L.players.slice(0, L.max);
+  // a player watching an ad (or with the app in the background) sits this race out: they stay in the lobby and race the next one
+  // (an "away" older than 90 s is ignored, in case the game never said it was back)
+  const away = p => p.away && Date.now() - p.awayAt < 90e3;
+  const racers = L.players.filter(p => !away(p)).slice(0, L.max);
+  if (!racers.length) { L.state = 'lobby'; setTimer(L, 3, () => startRace(L)); pushLobby(L); return; }   // everyone's away: try again in a moment
   for (const c of racers) c.ready = false;
   const bots = botsFor(L, racers.length).map((b, k) => ({ id: -(k + 1), name: b.name, car: b.car, bot: true }));
   const grid = {}, shuffle = a => a.sort(() => Math.random() - 0.5);
@@ -499,6 +503,7 @@ function handle(c, m) {
     }
     case 'leave': leaveLobby(c); return send(c, { t: 'left' });
     case 'start': { const L = c.lobby; if (L && L.private && L.host === c.id && L.state === 'lobby') startRace(L); return; }   // (older game versions)
+    case 'away': { c.away = !!m.on; c.awayAt = Date.now(); const L = c.lobby; if (L) { if (c.away) c.ready = false; if (L.state === 'lobby') checkAutoStart(L); pushLobby(L); } return; }   // an ad on screen / app in the background, and back
     case 'ready': { const L = c.lobby; if (!L) return; c.ready = !!m.on; checkAutoStart(L); pushLobby(L); return; }
     case 'loaded': { const L = c.lobby; if (L && L.state === 'loading' && L.race.racers.has(c.id)) { L.race.loaded.add(c.id); maybeGo(L); } return; }
     case 'st': return onState(c, m.s);
