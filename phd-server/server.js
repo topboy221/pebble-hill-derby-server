@@ -12,6 +12,22 @@ const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 
 const PORT = +process.env.PORT || 8080;
+// ---- playing in a web browser ----
+// WEB_PLAY=off (an environment variable on Render): the game is only for the apps. The website stays up (privacy policy,
+// delete account, app-ads.txt, /health), but its front page points to the app, and the online servers only take the apps.
+// Testers can still play in a browser with WEB_PLAY_KEY: open https://soapcuberacing.world/?key=<that key>.
+// Set the same two variables on all three servers (EU, US, Asia). Leave WEB_PLAY unset (or "on") for the old behaviour.
+const WEB_PLAY = !/^(off|0|false|no)$/i.test(process.env.WEB_PLAY || 'on');
+const WEB_PLAY_KEY = String(process.env.WEB_PLAY_KEY || '').trim();
+const STORE_URL = process.env.STORE_URL || 'https://play.google.com/store/apps/details?id=world.soapcuberacing.app';
+const APP_ORIGINS = ['https://localhost', 'http://localhost', 'capacitor://localhost', 'ionic://localhost'];   // the Android and iOS apps' web view
+function onlineAllowed(req) {
+  if (WEB_PLAY) return true;
+  const origin = String(req.headers.origin || '');
+  if (!origin || APP_ORIGINS.includes(origin)) return true;          // the apps (and non-browser tools, which can't be stopped anyway)
+  const k = new URLSearchParams((req.url || '').split('?')[1] || '').get('k') || '';
+  return !!WEB_PLAY_KEY && k === WEB_PLAY_KEY;                       // a tester's browser
+}
 // the game page: public/pebble-hill-derby.html (an older public/index.html still works as a fallback)
 const GAME_FILE = ['pebble-hill-derby.html', 'index.html'].map(f => path.join(__dirname, 'public', f)).find(f => fs.existsSync(f)) || path.join(__dirname, 'public', 'pebble-hill-derby.html');
 const TRACK_IDS = ['pebble', 'city', 'nomahe', 'tokiyama', 'whitecow', 'aloma', 'mesozon'];           // keep in sync with TRACKS in the game
@@ -637,11 +653,22 @@ async function appAdsTxt(res) {
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
   if (url === '/' || url === '/index.html' || url === '/pebble-hill-derby.html') {
+    // browser play switched off (WEB_PLAY=off): the website shows a page that points to the app instead of the game,
+    // unless the link carries the testers' key (?key=WEB_PLAY_KEY)
+    const qkey = new URLSearchParams(req.url.split('?')[1] || '').get('key') || '';
+    const tester = !!WEB_PLAY_KEY && qkey === WEB_PLAY_KEY;
+    if (!WEB_PLAY && !tester) {
+      return fs.readFile(path.join(__dirname, 'public', 'landing.html'), (err, buf) => {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+        res.end(err ? '<!doctype html><meta charset="utf-8"><title>Soapcube Racing</title><p>Soapcube Racing is played in the app: <a href="' + STORE_URL + '">Google Play</a></p>' : buf);
+      });
+    }
     fs.readFile(GAME_FILE, (err, buf) => {
       if (err) { res.writeHead(500); return res.end('Game file missing: put the game HTML at public/pebble-hill-derby.html'); }
       let html = buf.toString('utf8');
       if (!/^\s*<!doctype/i.test(html))   // the game file is a page body: give it a proper document head (mobile viewport, full screen)
         html = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#8ec2e6"></head><body>' + html + '</body></html>';
+      if (tester) html = html.replace(/<head>/i, '<head><script>window.PHD_PLAY_KEY=' + JSON.stringify(WEB_PLAY_KEY) + ';</script>');   // the game passes it on to the online server
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' }); res.end(html);
     });
     return;
@@ -686,14 +713,16 @@ const server = http.createServer((req, res) => {
       fs.createReadStream(file).pipe(res);
     });
   }
-  if (url === '/health') { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); return res.end(JSON.stringify({ ok: true, online: online.size, lobbies: lobbies.size, accounts: !!(SB_URL && SB_KEY), purchases: !!(RC_AUTH && SB_URL && SB_SECRET), appAds: appAds.from || null })); }
+  if (url === '/health') { res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); return res.end(JSON.stringify({ ok: true, webPlay: WEB_PLAY, online: online.size, lobbies: lobbies.size, accounts: !!(SB_URL && SB_KEY), purchases: !!(RC_AUTH && SB_URL && SB_SECRET), appAds: appAds.from || null })); }
   res.writeHead(404); res.end('Not found');
 });
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
+// (with browser play off: a browser's connection is told why, then closed; the game shows the message and doesn't retry)
 const STALE_MS = 9000;                             // players ping every 2 s; this long without a word means the connection is gone
 const clients = new Set();
 let nextId = 1;
 wss.on('connection', (ws, req) => {
+  if (!onlineAllowed(req)) { try { ws.send(JSON.stringify({ t: 'noweb', msg: 'Online racing is in the Soapcube Racing app.', store: STORE_URL })); } catch (e) {} setTimeout(() => { try { ws.close(4001, 'app only'); } catch (e) {} }, 200); return; }
   const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
   const c = { id: nextId++, ws, ip, name: null, guest: true, car: validCar({}), lobby: null, msgs: 0, since: Date.now(), lastSeen: Date.now(), sid: null };
   clients.add(c);
