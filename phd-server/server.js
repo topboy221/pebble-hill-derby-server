@@ -115,6 +115,7 @@ function lobbyInfo(L) {
     id: L.id, name: L.name, locked: L.private, host: L.host, state: L.state, track: L.nextTrack || null, first: !L.races,
     countdown: L.timer ? Math.max(0, Math.ceil((L.timerEnds - Date.now()) / 1000)) : null,
     players: L.players.map(c => ({ id: c.id, name: c.name, guest: c.guest, car: c.car, ready: !!c.ready, racing: !!(L.race && L.race.racers.has(c.id)) })),
+    running: (L.state === 'loading' || L.state === 'race') && L.race ? L.race.track : null,   // a race on now (track): who isn't in it waits for the next one
     max: L.max, mode: L.mode, min: L.mode === 'survival' ? SURV_MIN : 0, bots: !!L.bots, botList: botsFor(L, L.players.length).map(b => ({ name: b.name, paint: b.car.paint })),
   };
 }
@@ -149,7 +150,7 @@ function joinLobby(c, L) {
   L.players.push(c); c.lobby = L; c.ready = false;
   if (!L.host) L.host = c.id;
   pushLobby(L);
-  if (L.state === 'loading' || L.state === 'race') send(c, { t: 'info', msg: 'A race is running. You\'ll be on the grid for the next one.' });
+  // (a race running: the lobby info says so, and the game shows "Race in progress … you'll be on the grid for the next one")
   if (L.state === 'results' && L.vote) send(c, { t: 'results', rows: L.lastRows || [], vote: voteInfo(L) });
   checkAutoStart(L);
 }
@@ -472,8 +473,11 @@ function handle(c, m) {
     case 'quick': {
       c.car = validCar(m.car, c.custom) || c.car;
       const mode = m.mode === 'survival' ? 'survival' : 'normal';
-      const open = [...lobbies.values()].filter(L => !L.private && L.mode === mode && (L.state === 'lobby' || L.state === 'results') && L.players.length < L.max)
-        .sort((a, b) => b.players.length - a.players.length || a.created - b.created);
+      // any open lobby with a free place counts, also one whose race is running: you wait in its lobby and take an AI car's place on
+      // the grid of the next race. The fullest lobby first (so they fill up); between equals, one that isn't mid-race (you race sooner).
+      const waiting = L => (L.state === 'lobby' || L.state === 'results') ? 0 : 1;
+      const open = [...lobbies.values()].filter(L => !L.private && L.mode === mode && L.players.length < L.max)
+        .sort((a, b) => b.players.length - a.players.length || waiting(a) - waiting(b) || a.created - b.created);
       return joinLobby(c, open[0] || makeLobby({ name: mode === 'survival' ? 'Survival lobby' : 'Open lobby', mode, pool: m.pool }));
     }
     case 'create': {
