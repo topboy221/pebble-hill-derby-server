@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Soapcube Racing</title>
+<meta name="description" content="Soapcube Racing: gravity-powered downhill racing. No engines, just the hill. 12-car races and 50-car Survival, online with friends. Get it on Google Play.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&family=Rammetto+One&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1e2340;--muted:#4a5170;--paper:#fffdf6;--line:#e4e0d2;--tomato:#e8453c;--sky:#8ec2e6;--grass:#6aa847;--gold:#ffc93c}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#eef0f8;--muted:#b4bad2;--paper:#171a2c;--line:#2c3150;--tomato:#ff6a5f;--sky:#1d2b4a;--grass:#2f5a2a}}
+:root[data-theme="dark"]{--ink:#eef0f8;--muted:#b4bad2;--paper:#171a2c;--line:#2c3150;--tomato:#ff6a5f;--sky:#1d2b4a;--grass:#2f5a2a}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:500 17px/1.6 'M PLUS Rounded 1c',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column}
+header{background:var(--sky);border-bottom:14px solid var(--grass);padding:56px 16px 44px;text-align:center}
+h1{font:400 clamp(36px,9vw,64px)/1.05 'Rammetto One','Arial Black',sans-serif;margin:0 0 10px;color:var(--gold);
+  text-shadow:3px 0 0 #1e2340,-3px 0 0 #1e2340,0 3px 0 #1e2340,0 -3px 0 #1e2340,2px 2px 0 #1e2340,-2px 2px 0 #1e2340,2px -2px 0 #1e2340,-2px -2px 0 #1e2340,0 7px 0 #1e2340}
+.tag{margin:0 auto;max-width:34ch;font-weight:800;font-size:clamp(17px,4vw,21px)}
+main{flex:1;max-width:760px;width:100%;margin:0 auto;padding:36px 16px 48px;text-align:center}
+.play{display:inline-flex;align-items:center;gap:12px;background:#1e2340;color:#fff;text-decoration:none;font-weight:800;font-size:19px;
+  padding:14px 24px;border-radius:14px;border:2px solid #1e2340;box-shadow:0 6px 0 rgba(30,35,64,.35)}
+.play:hover{transform:translateY(-1px)}
+.play svg{width:26px;height:26px;flex:none}
+.play small{display:block;font-size:12px;font-weight:500;opacity:.8;line-height:1.1;text-align:left}
+ul{list-style:none;padding:0;margin:32px auto 0;max-width:520px;text-align:left}
+li{padding:10px 0;border-bottom:1px solid var(--line)}
+li b{color:var(--tomato)}
+footer{text-align:center;color:var(--muted);font-size:14px;padding:0 16px 32px}
+footer a{color:var(--tomato);font-weight:800}
+</style>
+</head>
+<body>
+<header>
+  <h1>Soapcube Racing</h1>
+  <p class="tag">Gravity-powered downhill racing. No engines. Just the hill.</p>
+</header>
+<main>
+  <a class="play" id="play" href="https://play.google.com/store/apps/details?id=world.soapcuberacing.app" rel="noopener">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#34a853" d="M3.6 1.8 13.4 12 3.6 22.2c-.4-.2-.6-.6-.6-1.1V2.9c0-.5.2-.9.6-1.1z"/><path fill="#fbbc04" d="m16.8 8.6 3.4 2c.9.5.9 1.8 0 2.3l-3.4 2L13.4 12z"/><path fill="#4285f4" d="M3.6 1.8c.3-.2.8-.2 1.2 0l12 6.8-3.4 3.4z"/><path fill="#ea4335" d="M13.4 12l3.4 3.4-12 6.8c-.4.2-.9.2-1.2 0z"/></svg>
+    <span><small>Get it on</small>Google Play</span>
+  </a>
+  <ul>
+    <li><b>Race 12 cars or survive 50.</b> Start dead last in Survival and fight through the whole pack.</li>
+    <li><b>7 tracks, 7 worlds.</b> Canyon, neon city, snow, jungle, a volcano and more.</li>
+    <li><b>Race friends online</b>, with servers in Europe, the Americas and Asia.</li>
+    <li><b>25 cars</b> to collect, paint and tune.</li>
+  </ul>
+</main>
+<footer><a href="/privacy">Privacy policy</a> · <a href="/delete-account">Delete your account</a> · © 2026 Soapcube Racing</footer>
+</body>
+</html>
