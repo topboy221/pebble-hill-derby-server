@@ -604,7 +604,7 @@ tr.me td{background:#dcecfa}
       </div>
       <div class="glab">Privacy</div>
       <div class="lrow privrow"><a class="btn" id="privLink" href="https://soapcuberacing.world/privacy" target="_blank" rel="noopener">Privacy policy</a><button class="btn" id="adPrivBtn" hidden>Ad privacy choices</button></div>
-      <p class="muted gamever" translate="no">v198</p>
+      <p class="muted gamever" translate="no">v199</p>
       </div>
       <div class="optpane" id="optCtl" hidden>
         <div class="glab">Touch buttons</div>
@@ -5443,9 +5443,10 @@ function adShow(name,then){
   let fin=false,tm=null;
   const finish=why=>{if(fin)return;fin=true;clearTimeout(tm);ADS.busy=false;ADS.wait=null;ADS.log.push(name+':'+why);
     if(snd)snd.master.gain.value=muted?0:0.7*OPT.vol;if(AC&&AC.state==='suspended'&&!paused)AC.resume();
+    if(!APP_AWAY)netAway(false);
     const q=ADS.then;ADS.then=null;if(then)then();if(q)q();};
   const play=()=>{ADS.wait=null;clearTimeout(tm);ADS.ready=false;
-    if(snd)snd.master.gain.value=0;releaseAll();musHush();
+    if(snd)snd.master.gain.value=0;releaseAll();musHush();netAway(true);   // (online: the server won't put you on the grid of a race that starts during the ad)
     tm=setTimeout(()=>finish('stuck'),120000);
     ADS.P.showInterstitial({placement:AD_PLACEMENT}).then(r=>{if(r&&r.shown)ADS.shown++;finish(r&&r.shown?'viewed':'failed');}).catch(()=>finish('failed'));};
   if(ADS.ready)return play();
@@ -5566,8 +5567,8 @@ if(NEED_ONLINE){addEventListener('offline',()=>{NETCHK.fails=2;netOffline(true);
 // leaving the game without closing it (home button, another app, screen off): all sound stops at once and comes back on return.
 // (The music fades are run by the game loop, which stops in the background, so the music has to be paused right here.)
 let APP_AWAY=false;
-function appAway(){if(APP_AWAY)return;APP_AWAY=true;musHush();if(AC&&AC.state==='running')AC.suspend().catch(()=>{});}
-function appBack(){if(!APP_AWAY)return;APP_AWAY=false;MUS.t=performance.now();if(NEED_ONLINE)netCheck();
+function appAway(){if(APP_AWAY)return;APP_AWAY=true;musHush();netAway(true);if(AC&&AC.state==='running')AC.suspend().catch(()=>{});}
+function appBack(){if(!APP_AWAY)return;APP_AWAY=false;MUS.t=performance.now();if(!ADS.busy)netAway(false);if(NEED_ONLINE)netCheck();
   if(AC&&AC.state==='suspended'&&!paused&&!ADS.busy)AC.resume().catch(()=>{});}   // (the music fades back in with the next frame)
 document.addEventListener('visibilitychange',()=>{if(document.hidden)appAway();else appBack();});
 addEventListener('pagehide',appAway);addEventListener('pageshow',()=>{if(!document.hidden)appBack();});
@@ -5676,6 +5677,9 @@ function netProbe(url){
     .catch(()=>{if(done)return;done=true;clearTimeout(t);NET.probe='down';mpRender();});}catch(e){NET.probe='down';}
 }
 function netPing(){netSend({t:'ping',c:Math.round(performance.now())});}
+// online: tell the server while an ad is on screen or the app is in the background (and when you're back), so a race that starts
+// meanwhile goes ahead without you: you stay in the lobby and race the next one, instead of starting it stuck behind an ad
+function netAway(on){NET.away=on;if(NET.conn==='on'&&NET.lobby)netSend({t:'away',on:!!on});}
 // who we race as: the signed-in account (the server checks it with Supabase), else the guest name we had, else ask
 function netSignIn(force){if(ACC.session&&(force||!NET.name||!NET.guest))netSend({t:'sb',token:ACC.session.access_token});else if(NET.name&&NET.guest)netSend({t:'guest'});else{NET.view='auth';mpRender();}}
 // watchdog: no word from the server for 7 s means the connection silently died (phone slept, network switched): reconnect
