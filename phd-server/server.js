@@ -163,7 +163,7 @@ function leaveLobby(c) {
     else L.race.racers.delete(c.id);
     L.race.states.delete(c.id); L.race.loaded.delete(c.id);
     broadcast(L, { t: 'gone', id: c.id });
-    if (L.race.botHost === c.id) dropBots(L, true);                    // their game was driving the AI cars
+    if (L.race.botHost === c.id && !handBots(L)) dropBots(L, true);    // their game was driving the AI cars: another racer's game takes them over
     if (L.state === 'loading') maybeGo(L); else if (L.state === 'race') maybeEnd(L);
   }
   if (L.vote) { L.vote.ballots.delete(c.id); voteDone(L); if (L.vote) broadcast(L, { t: 'votes', vote: voteInfo(L) }); }
@@ -255,6 +255,8 @@ function snap(L) {
 function checkIdle(L) {
   if (L.state !== 'race' || !L.race) return clearInterval(L.race && L.race.idleTimer);
   const now = Date.now(); if (now < L.race.start) return;
+  if (L.race.botHost != null) { const h = L.players.find(p => p.id === L.race.botHost);   // the AI cars' driver has gone quiet: someone else drives them
+    if (h && now - h.lastSeen > 5000) handBots(L); }
   for (const r of L.race.racers.values()) {
     if (r.fin || r.dnf) continue;
     if (now - Math.max(r.lastSt || 0, L.race.start) < RACE_IDLE_MS) continue;
@@ -264,6 +266,21 @@ function checkIdle(L) {
     const p = L.players.find(x => x.id === r.id); if (p) send(p, { t: 'out', msg: 'You were taken out of the race: no signal from your game for ' + Math.round(RACE_IDLE_MS / 1000) + ' s.' });
   }
   maybeEnd(L);
+}
+// the AI cars are driven by one racer's game (the "bot host"). If that racer leaves, goes silent, or goes away (an ad, the app in
+// the background), another racer's game takes them over where they are, so they don't vanish: someone still out on the course
+// first (their game is surely running), then someone who has finished. No one left to drive them: they're dropped.
+function handBots(L, not) {
+  if (!L.race || L.race.botHost == null) return false;
+  const now = Date.now(), r = L.race;
+  const ok = p => p.id !== not && p.id !== r.botHost && r.racers.has(p.id) && !r.racers.get(p.id).dnf && (L.state !== 'race' || r.loaded.has(p.id))
+    && now - p.lastSeen < 5000 && !(p.away && now - p.awayAt < 90e3);
+  const c = L.players.filter(ok).sort((a, b) => (r.racers.get(a.id).fin ? 1 : 0) - (r.racers.get(b.id).fin ? 1 : 0))[0];
+  if (!c) return false;
+  r.botHost = c.id;
+  for (const b of r.racers.values()) if (b.bot && !b.fin && !b.dnf) b.lastSt = now;   // (a moment for the new host to pick them up)
+  broadcast(L, { t: 'bothost', id: c.id });
+  return true;
 }
 function dropBots(L, tell) {
   if (!L.race) return;
@@ -503,7 +520,12 @@ function handle(c, m) {
     }
     case 'leave': leaveLobby(c); return send(c, { t: 'left' });
     case 'start': { const L = c.lobby; if (L && L.private && L.host === c.id && L.state === 'lobby') startRace(L); return; }   // (older game versions)
-    case 'away': { c.away = !!m.on; c.awayAt = Date.now(); const L = c.lobby; if (L) { if (c.away) c.ready = false; if (L.state === 'lobby') checkAutoStart(L); pushLobby(L); } return; }   // an ad on screen / app in the background, and back
+    case 'away': {   // an ad on screen / the app in the background, and back
+      c.away = !!m.on; c.awayAt = Date.now(); const L = c.lobby; if (!L) return;
+      if (c.away) c.ready = false;
+      if (c.away && (L.state === 'race' || L.state === 'loading') && L.race && L.race.botHost === c.id) handBots(L);   // can't drive the AI cars from behind an ad
+      if (L.state === 'lobby') checkAutoStart(L);
+      pushLobby(L); return; }
     case 'ready': { const L = c.lobby; if (!L) return; c.ready = !!m.on; checkAutoStart(L); pushLobby(L); return; }
     case 'loaded': { const L = c.lobby; if (L && L.state === 'loading' && L.race.racers.has(c.id)) { L.race.loaded.add(c.id); maybeGo(L); } return; }
     case 'st': return onState(c, m.s);
