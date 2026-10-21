@@ -604,7 +604,7 @@ tr.me td{background:#dcecfa}
       </div>
       <div class="glab">Privacy</div>
       <div class="lrow privrow"><a class="btn" id="privLink" href="https://soapcuberacing.world/privacy" target="_blank" rel="noopener">Privacy policy</a><button class="btn" id="adPrivBtn" hidden>Ad privacy choices</button></div>
-      <p class="muted gamever" translate="no">v199</p>
+      <p class="muted gamever" translate="no">v200</p>
       </div>
       <div class="optpane" id="optCtl" hidden>
         <div class="glab">Touch buttons</div>
@@ -5725,10 +5725,10 @@ function netMsg(m){
       if(m.lobby.state==='lobby')NET.info='';
       if(first||(!NET.inRace&&!NET.results&&menuScreen!=='lobby'&&state==='menu'))showScreen('lobby');
       lobbyRender();break;}
-    case 'race':case 'go':case 'snap':case 'fin':case 'gone':case 'out':case 'results':case 'votes':case 'voted':case 'hit':
+    case 'race':case 'go':case 'snap':case 'fin':case 'gone':case 'out':case 'results':case 'votes':case 'voted':case 'hit':case 'bothost':
       // race traffic only counts while we're in a lobby: a message already on its way when you left is ignored
       if(!NET.lobby||NET.leaving)break;
-      if(m.t==='hit')netHit(m);else if(m.t==='race')netRace(m);else if(m.t==='go')netGo(m);else if(m.t==='snap')netSnap(m);else if(m.t==='fin')netFin(m);else if(m.t==='gone')netGone(m.id);else if(m.t==='out')netOut(m);else netResults(m);
+      if(m.t==='bothost')netBotHost(m);else if(m.t==='hit')netHit(m);else if(m.t==='race')netRace(m);else if(m.t==='go')netGo(m);else if(m.t==='snap')netSnap(m);else if(m.t==='fin')netFin(m);else if(m.t==='gone')netGone(m.id);else if(m.t==='out')netOut(m);else netResults(m);
       break;
   }
 }
@@ -6716,6 +6716,21 @@ function netOut(m){
   if(!player||!(state==='race'||state==='countdown')||player.finished)return;
   player.finished=true;player.finishTime=0;NET.outMsg=m.msg||'Taken out of the race for inactivity.';
   resultsShown=true;netShowResults();
+}
+// the AI cars change driver (the racer whose game drove them left or went away): if it's us, our game takes them over from
+// where they are now and drives them to the line; if we drove them and someone else takes over, we just show them again
+function netBotHost(m){
+  const was=NET.botHost===NET.you;NET.botHost=m.id;const me=m.id===NET.you,now=performance.now(),rr=Math.random;
+  for(const c of cars){if(!c.bot)continue;
+    if(me&&c.remote){
+      if(c.net&&c.net.s){const q=c.net.s,P=netPredict(c.net,now);Object.assign(c,{x:P.x,z:P.z,psi:P.psi,vx:P.vx,vz:P.vz,y:P.y,vy:q[5],grounded:P.grounded,delta:q[8]||0,r:q[11]||0,finished:c.finished||!!(q[9]&32)});}
+      const i=nearest(c.x,c.z,40);if(i>=0){c.idx=i;locate(c);}
+      Object.assign(c,{remote:false,ai:true,buf:null,net:null,oldNet:null,lane:c.d||0,brakeS:0,stuckT:0,progT:null,pendHit:null,
+        skill:c.skill||0.84+rr()*0.1,baseLane:c.baseLane!=null?c.baseLane:(rr()-0.5)*5.2,draftLove:c.draftLove||0.3+rr()*0.7});
+    }else if(!me&&was&&!c.remote){
+      Object.assign(c,{remote:true,ai:false,net:null,oldNet:null,buf:[],ex:undefined,pendHit:null,lagUntil:null,lagGhost:false,lagHide:false});
+    }
+  }
 }
 function netGone(id){
   const i=cars.findIndex(k=>k.netId===id);if(i<0||cars[i]===player)return;
